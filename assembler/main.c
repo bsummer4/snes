@@ -54,7 +54,7 @@ int main(int argc, char *argv[]) {
     // Command Prompt                                          |
     //==========================================================
     if(argc<2)
-        Error(0x02,0x33,NULL,NULL); // Usage: [65616asm][in_file][-switch] ...
+        Error(0x02,0x33,NULL,NULL); // Usage: [65816asm][in_file][-switch] ...
     if(!Is_Name(argv[1]))
         Error(0x02,0x16,NULL,(void*)argv[1]); // Invalid in file
 
@@ -1430,7 +1430,7 @@ void Error(int program, int code, File_s *In, void *data)
     case 0x30: printf("Usage [#Name][addr][name][,] ...\n");                   break;
     case 0x31: printf("Usage [#PC][+][addr][,][pad] ...\n");                   break;
     case 0x32: printf("Usage [{][+/-][link][}]\n");                            break;
-    case 0x33: printf("Usage 65616asm input_file [switches]\n");               break;
+    case 0x33: printf("Usage 65816asm input_file [switches]\n");               break;
     case 0x34: printf("Usage [-i][in_file]\n");                                break;
     case 0x35: printf("Usage [-o][out_file]\n");                               break;
     }
