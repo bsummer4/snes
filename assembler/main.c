@@ -11,8 +11,12 @@
 //==============================================================
 // #Include                                                    |
 //==============================================================
+#include <stdbool.h>
+#include <assert.h>
 #include "assembler.h"
 
+#define ITER(var, from, to) for (int var = from; var < to; var++)
+#define FORII(x) ITER(ii, 0, x)
 
 //==============================================================
 // Global Definitions                                          |
@@ -24,14 +28,12 @@ int Report_f = 0;   // Assembly report flag
 
 File_s *Out;        // Out file structure
 
-Dll_n *Global_File   = Dll_New(Dll_head_t_); // In file list
-Dll_n *Global_Code   = Dll_New(Dll_head_t_); // Code list
-Dll_n *Global_Data   = Dll_New(Dll_head_t_); // Data list
-Dll_n *Global_Name   = Dll_New(Dll_head_t_); // Name list
-Dll_n *Global_Name_R = Dll_New(Dll_head_t_); // Name reference list
-Dll_n *Global_Link   = Dll_New(Dll_head_t_); // Link list
-Dll_n *Global_Link_R = Dll_New(Dll_head_t_); // Link reference list
+Dll_n *Global_File, *Global_Code, *Global_Data, *Global_Name;
+Dll_n *Global_Name_R, *Global_Link, *Global_Link_R;
 
+Dll_n **Global_Dlls[7] = {&Global_File, &Global_Code, &Global_Data, \
+                          &Global_Name, &Global_Name_R, &Global_Link,   \
+                          &Global_Link_R};
 
 
 
@@ -42,21 +44,20 @@ Dll_n *Global_Link_R = Dll_New(Dll_head_t_); // Link reference list
 //-------------------------------------------------------------|
 // Main program.                                               |
 //==============================================================
-int main(int argc, char *argv[])
-{
-    char  *s = NULL;  // String
-    int    i;
-    int    j;
+int main(int argc, char *argv[]) {
+    FORII (7) *Global_Dlls[ii] = Dll_New(Dll_head_t_);
+    char *s = NULL;  // String
+    int i, j;
     Dll_n *n;  // Node
-    
+
     //==========================================================
     // Command Prompt                                          |
     //==========================================================
     if(argc<2)
-        Error(0x02,0x33,NULL,NULL); // Usage: [65816_Assembler.exe][in_file][-switch] ...
+        Error(0x02,0x33,NULL,NULL); // Usage: [65616asm][in_file][-switch] ...
     if(!Is_Name(argv[1]))
         Error(0x02,0x16,NULL,(void*)argv[1]); // Invalid in file
-    
+
     // [-switch] ===============================================
     for(i=2;i<argc;i++){
         // [-o][out_file]
@@ -136,10 +137,7 @@ int main(int argc, char *argv[])
     Dll_Free(Global_Name_R);
     Dll_Free(Global_Link);
     Dll_Free(Global_Link_R);
-    
-    printf("\n-Enter any key-\n");
-    scanf("%i",&i);
-    
+
     return 0;
 }
 
@@ -162,8 +160,7 @@ void First_Pass(char *name)
     Dll_file_s *d; // Data
     char   *t;     // Token
     char    c;
-    int     i;
-    
+
     //==========================================================
     // Open In File                                            |
     //==========================================================
@@ -171,12 +168,12 @@ void First_Pass(char *name)
     d=(Dll_file_s*)n->data;
     strcat(d->name,name);
     Dll_Insert(Global_File,n);
-    
+
     In=New_File(name,"r");
     f=In->file;
     t=In->line;
     s=d->stat=In->stat;
-    
+
     //==========================================================
     // Main Loop                                               |
     //==========================================================
@@ -194,7 +191,7 @@ void First_Pass(char *name)
             Free_File(In);
             return;
         }
-        
+
         // Identify Statement ==================================
         if(!strcmp(t,"#")){
             Do_Directive(In);
@@ -224,20 +221,19 @@ void Second_Pass(void)
     int    i;
     int    j;
     int    s; // Size
-    long   f; // File pointer
     Dll_n *r;
     Dll_n *d;
     Dll_link_s *lr;
     Dll_link_s *ld;
     Dll_name_s *n;
-    
+
     //==========================================================
     // Resolve Name References                                 |
     //==========================================================
-    while(r=Dll_Pull(Global_Name_R)){
-        if(!(d=Dll_Find(Global_Name,r)))
-            if(!(d=Dll_Find(Global_Code,r)))
-                if(!(d=Dll_Find(Global_Data,r)))
+    while ((r=Dll_Pull(Global_Name_R))) {
+        if (!(d=Dll_Find(Global_Name,r)))
+            if (!(d=Dll_Find(Global_Code,r)))
+                if (!(d=Dll_Find(Global_Data,r)))
                     Error(0x04,0x2B,NULL,(void*)r); // Undeclared name reference
         n=(Dll_name_s*)d->data;
         if(n->data==-1)
@@ -250,12 +246,12 @@ void Second_Pass(void)
             j=j>>8;
         }
     }
-    
+
     //==========================================================
     // Resolve Link References                                 |
     //==========================================================
-    while(r=Dll_Pull(Global_Link_R)){
-        if(!(d=Dll_Find(Global_Link,r)))
+    while ((r=Dll_Pull(Global_Link_R))) {
+        if (!(d=Dll_Find(Global_Link,r)))
             Error(0x04,0x2A,NULL,(void*)r); // Undeclared link reference
         lr=(Dll_link_s*)r->data;
         ld=(Dll_link_s*)d->data;
@@ -345,16 +341,15 @@ void Do_Assembly(File_s *In)
     Dll_n      *n;
     Dll_link_s *k;
     char *ib = In ->line; // Input  buffer
-    char *ob = Out->line; // Output buffer
     FILE *f  = In ->file;
-    
+
     //==========================================================
     // Identify Mnemonic                                       |
     //==========================================================
     for(m=0;strcmp(ib,Set[m].mnemonic);)
         if(++m>=MNEMONIC_COUNT)
             Error(0x06,0x19,In,(void*)ib); // Invalid mnemonic
-    
+
     //==========================================================
     // Identify Addressing Mode                                |
     //==========================================================
@@ -648,7 +643,7 @@ void Do_Assembly(File_s *In)
 void Do_Compiler(File_s *In)
 {
     char *ib = In->line;
-    
+
     if(ib[0]=='{'){
         Do_Link(In);
         return;
@@ -670,7 +665,7 @@ void Do_Link(File_s *In)
     FILE  *f  = In->file;
     Dll_n *n;
     Dll_link_s *k;
-    
+
     //==========================================================
     // Record Label                                            |
     //==========================================================
@@ -705,11 +700,11 @@ void Do_Link(File_s *In)
 // Identify and execute assembler directive.                   |
 //==============================================================
 void Do_Directive(File_s *In)
-{ 
+{
     FILE *f = In->file;
     char *ib = In->line;
     char  c = fgetc(f);
-    
+
     //==========================================================
     // Get Directive                                           |
     //==========================================================
@@ -725,11 +720,11 @@ void Do_Directive(File_s *In)
     }
     ungetc(c,f);
     Get_Token(In);
-    
+
     //==========================================================
     // Identify Directive                                      |
     //==========================================================
-    
+
     // Comment
     /* */if(!strcmp(ib,"{"    )                    //++
           ||!strcmp(ib,"}"    )) Dir_Block(In);    //++
@@ -752,7 +747,7 @@ void Do_Directive(File_s *In)
     else if(!strcmp(ib,"Halt" )) Dir_Halt(In);     //++
     // Error
     else Error(0x09,0x0F,In,ib); // Invalid directive
-    
+
     In->stat->dire_c++;
     return;
 }
@@ -772,7 +767,7 @@ void Dir_Block(File_s *In)
     FILE   *f  = In->file;
     char   *ib = In->line;
     Stat_s *s  = In->stat;
-    
+
     switch(ib[0]){
     case '{':
         for(;;){
@@ -818,14 +813,11 @@ void Dir_Block(File_s *In)
 void Dir_Code(File_s *In)
 {
     char  *ib= In->line;
-    FILE  *o = Out->file;
     Dll_n *n1;
     Dll_n *n2;
     Dll_name_s *d1;
     Dll_name_s *d2;
-    int    i;
-    int    j;
-    
+
     do{
         //======================================================
         // Build Code Node                                     |
@@ -877,16 +869,16 @@ void Dir_Code(File_s *In)
                 Error(0x0B,0x2E,In,NULL); // Usage [#Code][addr][{][name][}][,] ...
             strcat(d1->name,ib);
         }
-        
+
         //======================================================
         // Reference Code Node                                 |
         //======================================================
-        if(Dll_Find(Global_Name,n1)||Dll_Find(Global_Data,n1))
+        if (Dll_Find(Global_Name,n1)||Dll_Find(Global_Data,n1))
             Error(0x0B,0x04,In,(void*)n1); // Conflicting declarations
-        if(n2=Dll_Find(Global_Code,n1)){
+        if ((n2=Dll_Find(Global_Code,n1))) {
             // Cross check size
             d2=(Dll_name_s*)n2->data;
-            if(d2->size!=d1->size)
+            if (d2->size!=d1->size)
                 Error(0x0B,0x04,In,(void*)n1); // Conflicting declarations
             // Cross check data
             if(d1->data!=-1){
@@ -946,8 +938,7 @@ void Dir_Data(File_s *In)
     int    c;
     int    i;
     int    j;
-    long   fp;
-    
+
     do{
         //======================================================
         // Build Data Node                                     |
@@ -1049,7 +1040,7 @@ DEFINITION:
         }else{
             if(Dll_Find(Global_Name,n1)||Dll_Find(Global_Code,n1))
                 Error(0x0D,0x04,In,(void*)n1); // Conflicting declarations
-            if(n2=Dll_Find(Global_Data,n1)){
+            if ((n2=Dll_Find(Global_Data,n1))) {
                 // Cross check size
                 d2=(Dll_name_s*)n2->data;
                 if(d2->size!=d1->size)
@@ -1085,8 +1076,7 @@ DEFINITION:
 void Dir_File(File_s *In)
 {
     char  *ib = In->line;
-    Dll_n *n;
-    
+
     do{
         In->stat->stmt_c++;
         Get_Token(In);
@@ -1108,15 +1098,13 @@ void Dir_File(File_s *In)
 //==============================================================
 void Dir_Halt(File_s *In)
 {
-    int i;
-    
     Second_Pass();
-    
+
     // Report
     In->stat->stmt_c++;
     In->stat->file_s=PC_to_File(PC);
     Report();
-    
+
     // Cleanup
     Free_File(Out);
     Dll_Free(Global_File);
@@ -1126,10 +1114,7 @@ void Dir_Halt(File_s *In)
     Dll_Free(Global_Name_R);
     Dll_Free(Global_Link);
     Dll_Free(Global_Link_R);
-    
-    printf("\n-Enter any key-\n");
-    scanf("%i",&i);
-    
+
     exit(0);
 }
 
@@ -1142,15 +1127,11 @@ void Dir_Halt(File_s *In)
 void Dir_Name(File_s *In)
 {
     char  *t = In->line;
-    FILE  *o = Out->file;
     Dll_n *n1;
     Dll_n *n2;
     Dll_name_s *d1;
     Dll_name_s *d2;
-    int    i;
-    int    j;
-    long   fp;
-    
+
     do{
         //======================================================
         // Build Name Node                                     |
@@ -1158,7 +1139,7 @@ void Dir_Name(File_s *In)
         n1=Dll_New(Dll_name_t_);
         d1=(Dll_name_s*)n1->data;
         Get_Token(In);
-        
+
         // Data ================================================
         if(!strcmp(t,"b")||!strcmp(t,"w")||!strcmp(t,"l")){
             // Prototype (byte,word,long)
@@ -1181,16 +1162,16 @@ void Dir_Name(File_s *In)
         if(In->type!=Token_name_t_)
             Error(0x10,0x30,In,NULL); // Usage [#Name][data][name][,] ...
         strcat(d1->name,t);
-        
+
         //======================================================
         // Reference Name Node                                 |
         //======================================================
-        if(Dll_Find(Global_Code,n1)||Dll_Find(Global_Data,n1))
+        if (Dll_Find(Global_Code,n1)||Dll_Find(Global_Data,n1))
             Error(0x10,0x04,In,(void*)n1); // Conflicting declarations
-        if(n2=Dll_Find(Global_Name,n1)){
+        if ((n2=Dll_Find(Global_Name,n1))) {
             // Cross check size
             d2=(Dll_name_s*)n2->data;
-            if(d2->size!=d1->size)
+            if (d2->size!=d1->size)
                 Error(0x10,0x04,In,(void*)n1); // Conflicting declarations
             // Cross check data
             if(d1->data!=-1){
@@ -1227,9 +1208,8 @@ void Dir_PC(File_s *In)
     int   n;
     int   a; // Advance PC count
     int   o_f = 0; // Offset flag
-    int   p_f = 0; // Pad flag
-    
-    
+
+
     //==========================================================
     // Get PC Operand                                          |
     //==========================================================
@@ -1242,7 +1222,7 @@ void Dir_PC(File_s *In)
     if(In->type!=Token_number_t_)
         Error(0x11,0x31,In,NULL); // Usage [#PC][+][addr][,][pad]
     Read_Operand(In);
-    
+
     //==========================================================
     // Advance Program Counter                                 |
     //==========================================================
@@ -1263,7 +1243,7 @@ void Dir_PC(File_s *In)
         a=PC_to_File(n)-PC_to_File(PC);
     }
     Advance_PC(a);
-    
+
     //==========================================================
     // Advance File Pointer                                    |
     //==========================================================
@@ -1301,7 +1281,7 @@ void Dir_Print(File_s *In)
 {
     FILE *f = In->file;
     char  c = fgetc(f);
-    
+
     if(!feof(f)&&Is_Whitespace(c))
         c=fgetc(f);
     for(;!feof(f)&&c!=';';c=fgetc(f)){
@@ -1350,12 +1330,9 @@ void Dir_Rom(File_s *In)
 //==============================================================
 void Error(int program, int code, File_s *In, void *data)
 {
-    int    i;
-    Dll_n *n;
-    
-    if(In)
-        printf("\nLine => %i\n",In->stat->line_c);
-    
+   if (In)
+        printf("\nLine => %li\n",In->stat->line_c);
+
     printf("\nError : ");
     switch(program){
     default:   Error(0x01,0x03,In,(void*)&program);
@@ -1399,7 +1376,7 @@ void Error(int program, int code, File_s *In, void *data)
     case 0x25: printf("Dll_Print()\n");            break;
     case 0x26: printf("Dll_Size() : ");            break;
     }
-    
+
     switch(code){
     default:   Error(0x01,0x02,In,(void*)&code);
     case 0x00:                                                                 break;
@@ -1421,7 +1398,7 @@ void Error(int program, int code, File_s *In, void *data)
     case 0x10: printf("Invalid dll data type\n");                              break;
     case 0x11: printf("Invalid escape sequence : \\%c",*((char*)data));        break;
     case 0x12: printf("Invalid file name : %s\n",(char*)data);                 break;
-    case 0x13: printf("Invalid file pointer : %x\n",*((long*)data));           break;
+    case 0x13: printf("Invalid file pointer : %lx\n",*((long*)data));           break;
     case 0x14: printf("Invalid find type\n");                                  break;
     case 0x15: printf("Invalid hex number : %s\n",(char*)data);                break;
     case 0x16: printf("Invalid in file : %s\n",(char*)data);                   break;
@@ -1432,7 +1409,7 @@ void Error(int program, int code, File_s *In, void *data)
     case 0x1B: printf("Invalid number : %s\n",(char*)data);                    break;
     case 0x1C: printf("Invalid operand\n");                                    break;
     case 0x1D: printf("Invalid out file : %s\n",(char*)data);                  break;
-    case 0x1E: printf("Invalid program counter : %x\n",*((long*)data));        break;
+    case 0x1E: printf("Invalid program counter : %lx\n",*((long*)data));        break;
     case 0x1F: printf("Invalid statement\n");                                  break;
     case 0x20: printf("Invalid string\n");                                     break;
     case 0x21: printf("Invalid switch : %s\n",(char*)data);                    break;
@@ -1442,7 +1419,7 @@ void Error(int program, int code, File_s *In, void *data)
     case 0x25: printf("Null list\n");                                          break;
     case 0x26: printf("Operand width mismatch : %s\n",(char*)data);            break;
     case 0x27: printf("PC decremented\n");                                     break;
-    case 0x28: printf("Program crossed bank boundry : %x\n",PC);               break;
+    case 0x28: printf("Program crossed bank boundry : %lx\n",PC);               break;
     case 0x29: printf("ROM overflow\n");                                       break;
     case 0x2A: printf("Undeclared link reference\n"); Dll_Print((Dll_n*)data); break;
     case 0x2B: printf("Undeclared name reference\n"); Dll_Print((Dll_n*)data); break;
@@ -1453,14 +1430,11 @@ void Error(int program, int code, File_s *In, void *data)
     case 0x30: printf("Usage [#Name][addr][name][,] ...\n");                   break;
     case 0x31: printf("Usage [#PC][+][addr][,][pad] ...\n");                   break;
     case 0x32: printf("Usage [{][+/-][link][}]\n");                            break;
-    case 0x33: printf("Usage [65816_Assembler.exe][in_file][-switches]\n");    break;
+    case 0x33: printf("Usage 65616asm input_file [switches]\n");               break;
     case 0x34: printf("Usage [-i][in_file]\n");                                break;
     case 0x35: printf("Usage [-o][out_file]\n");                               break;
     }
-    
-    printf("\n-Enter any key-\n");
-    scanf("%i",i);
-    
+
     exit(1);
 }
 
@@ -1482,7 +1456,7 @@ File_s* New_File(char *name, char *mode)
 {
     File_s *f;
     Stat_s *s;
-    
+
     // File structure
     if(!(f=(File_s*)malloc(sizeof(File_s))))
         Error(0x14,0x07,NULL,NULL); // Failed malloc()
@@ -1528,7 +1502,7 @@ File_s* New_File(char *name, char *mode)
     s->data_s=0;
     s->file_s=0;
     f->stat=s;
-    
+
     return f;
 }
 
@@ -1545,7 +1519,7 @@ void Free_File(File_s *f)
     free(f->mode);
     free(f->stat);
     free(f);
-    
+
     return;
 }
 
@@ -1600,7 +1574,7 @@ int Is_Numberspace(char c)
 int Is_Name(char *s)
 {
     int i = strlen(s);
-    
+
     if(i&&i<=NAME_MAX&&!('0'<=s[0]&&s[0]<='9')&&Is_Namespace(s[0])){
         while(--i)
             if(!Is_Namespace(s[i]))
@@ -1639,7 +1613,7 @@ void Get_Token(File_s *In)
     char *ib = In->line;
     char  c = c=fgetc(f);
     int   i = 0;
-    
+
     // Get non-space character
     for(;!feof(f)&&Is_Whitespace(c);c=fgetc(f))
         if(c=='\n')
@@ -1648,7 +1622,7 @@ void Get_Token(File_s *In)
         goto RETURN;
     ib[i++]=c;
     switch(c){
-              
+
     //==========================================================
     // Symbol                                                  |
     //==========================================================
@@ -1669,7 +1643,7 @@ void Get_Token(File_s *In)
     case '\\':
         r=Token_symbol_t_;
         goto RETURN;
-        
+
     //==========================================================
     // Number                                                  |
     //==========================================================
@@ -1697,7 +1671,7 @@ void Get_Token(File_s *In)
         }
         ungetc(c,f);
         break;
-        
+
     //==========================================================
     // String                                                  |
     //==========================================================
@@ -1741,7 +1715,7 @@ void Get_Token(File_s *In)
             }
         }
         Error(0x1A,0x20,In,NULL); // Invalid string
-        
+
     //==========================================================
     // Name                                                    |
     //==========================================================
@@ -1767,7 +1741,7 @@ void Get_Token(File_s *In)
         r=Token_name_t_;
         break;
     }
-    
+
     //==========================================================
     // Return                                                  |
     //==========================================================
@@ -1799,7 +1773,7 @@ void Read_Operand(File_s *In)
     int    s; //size (byte)
     int    i;
     int    j;
-    
+
     In->data=0;
     In->size=0;
     switch(In->type){
@@ -1811,7 +1785,7 @@ void Read_Operand(File_s *In)
     case Token_name_t_:
         n1=Dll_New(Dll_name_t_);
         d1=(Dll_name_s*)n1->data;
-        
+
         // Reference suffix
         i=strlen(ib);
         if(i>2&&!strcmp(&ib[i-2],".l")){
@@ -1840,10 +1814,10 @@ void Read_Operand(File_s *In)
         In->data=0;
         Dll_Push(Global_Name_R,n1);
         break;
-        
+
     //======================================================
     // Number                                              |
-    //====================================================== 
+    //======================================================
     case Token_number_t_:
         // Get base prefix
         for(i=0;ib[i]==':'&&ib[i]!='\0';i++);
@@ -1857,7 +1831,7 @@ void Read_Operand(File_s *In)
         case '%': i++; b= 2; break;
         case '$': i++; b=16; break;
         }
-        
+
         // Get width suffix
         for(j=0;ib[i]!='\0';i++,j++);
         i--,j--;
@@ -1905,7 +1879,7 @@ void Read_Operand(File_s *In)
             case 3: if(!(0<=In->data&&In->data<=0xFFFFFF)) Error(0x1B,0x26,In,(void*)ib); break; // Operand width mismatch
             }
             break;
-        case 16: 
+        case 16:
             if(s%2||s/2>3)
                 Error(0x1B,0x15,In,(void*)ib); // Invalid hex number
             if(In->size&&In->size!=s/2)
@@ -1935,7 +1909,7 @@ void Read_Operand(File_s *In)
 long File_to_PC(long f)
 {
     long p = 0;
-    
+
     if(f<0||f>0xFFFFFF)
         Error(0x1C,0x13,NULL,(void*)(&f)); // Invalid file pointer
     // SNES memory map
@@ -1964,7 +1938,7 @@ long File_to_PC(long f)
 long PC_to_File(long p)
 {
     long f = 0;
-    
+
     if(p<0||p>0xFFFFFF)
         Error(0x1D,0x1E,NULL,(void*)(&p)); // Invalid program counter
     // SNES memory map
@@ -1995,7 +1969,7 @@ long PC_to_File(long p)
 int Advance_PC(long i)
 {
     int bank_f;
-    
+
     if(i<0)
         Error(0x1E,0x27,NULL,NULL); // PC decremented
     for(bank_f=0;i>0;i--){
@@ -2052,8 +2026,7 @@ Dll_n* Dll_New(Dll_t_ t)
     Dll_file_s *f; // File structure
     Dll_link_s *k; // Link structure
     Dll_name_s *d; // Name structure
-    Stat_s     *s; // File statistic
-    
+
     //==========================================================
     // New Node                                                |
     //==========================================================
@@ -2063,7 +2036,7 @@ Dll_n* Dll_New(Dll_t_ t)
     n->prev=NULL;
     n->data=NULL;
     n->type=t;
-    
+
     //==========================================================
     // New Data Structure                                      |
     //==========================================================
@@ -2129,8 +2102,8 @@ void Dll_Free(Dll_n *l)
     Dll_file_s *f; // File structure
     Dll_link_s *k; // Link structure
     Dll_name_s *d; // Name structure
-    
-    
+
+
     //==========================================================
     // Repair List                                             |
     //==========================================================
@@ -2146,7 +2119,7 @@ void Dll_Free(Dll_n *l)
                 l->next->prev=l->prev;
         }
     }
-    
+
     //==========================================================
     // Free Data Structure                                     |
     //==========================================================
@@ -2162,7 +2135,7 @@ void Dll_Free(Dll_n *l)
             break;
         // File
         case Dll_file_t_:
-            if(f=(Dll_file_s*)n->data){
+            if ((f=(Dll_file_s*)n->data)) {
                 free(f->name);
                 free(f->stat);
                 free(f);
@@ -2170,7 +2143,7 @@ void Dll_Free(Dll_n *l)
             break;
         // Link
         case Dll_link_t_:
-            if(k=(Dll_link_s*)n->data){
+            if ((k=(Dll_link_s*)n->data)) {
                 free(k->name);
                 free(k->file);
                 free(k);
@@ -2178,19 +2151,19 @@ void Dll_Free(Dll_n *l)
             break;
         // Name
         case Dll_name_t_:
-            if(d=(Dll_name_s*)n->data){
-                free(d->name); 
+            if ((d=(Dll_name_s*)n->data)) {
+                free(d->name);
                 free(d);
             }
             break;
         }
-        
+
         //======================================================
         // Free Node                                           |
         //======================================================
         m=n->next;
         free(n);
-        
+
         if(!list_f)
             break;
     }
@@ -2215,13 +2188,13 @@ void Dll_Free(Dll_n *l)
 void Dll_Insert(Dll_n *l, Dll_n *i)
 {
     Dll_n *n; // Dll node
-    
+
     if(i){
         if(!l)
             Error(0x21,0x25,NULL,NULL); // Null list
         if(l->type!=Dll_head_t_)
             Error(0x21,0x08,NULL,NULL); // Headerless list
-        
+
         //======================================================
         // Sorting Logic                                       |
         //======================================================
@@ -2243,7 +2216,7 @@ void Dll_Insert(Dll_n *l, Dll_n *i)
                 break;
             }
         }
-    
+
         //======================================================
         // Insert Node                                         |
         //======================================================
@@ -2273,7 +2246,7 @@ Dll_n* Dll_Find(Dll_n *l, Dll_n *t)
     Dll_file_s *f;  // File structure
     Dll_link_s *k;  // Link structure
     Dll_name_s *d;  // Name structure
-    
+
     if(t){
         //======================================================
         // Initialize Find                                     |
@@ -2282,7 +2255,7 @@ Dll_n* Dll_Find(Dll_n *l, Dll_n *t)
             Error(0x22,0x25,NULL,NULL); // Null list
         if(l->type!=Dll_head_t_)
             Error(0x22,0x08,NULL,NULL); // Headerless list
-        
+
         switch(t->type){
         default:
         case Dll_null_t_:
@@ -2298,12 +2271,12 @@ Dll_n* Dll_Find(Dll_n *l, Dll_n *t)
             d=(Dll_name_s*)t->data;
             break;
         }
-        
+
         //======================================================
         // Find                                                |
         //======================================================
         for(n=l->next;n;n=n->next){
-            switch(t->type){
+            switch(t->type) {
             // File
             case Dll_file_t_:
                 if((n->type==Dll_file_t_)
@@ -2346,6 +2319,8 @@ Dll_n* Dll_Find(Dll_n *l, Dll_n *t)
                 &&(!strcmp(d->name,((Dll_name_s*)n->data)->name)))
                     goto FOUND;
                 break;
+            default:
+              assert (true);
             }
         }
         if(t->type==Dll_link_t_)
@@ -2377,7 +2352,7 @@ void Dll_Push(Dll_n *l, Dll_n *n)
             Error(0x23,0x25,NULL,NULL); // Null list
         if(l->type!=Dll_head_t_)
             Error(0x23,0x08,NULL,NULL); // Headerless list
-        
+
         // Push
         n->next=l->next;
         n->prev=l;
@@ -2403,7 +2378,7 @@ Dll_n* Dll_Pull(Dll_n *l)
         Error(0x23,0x25,NULL,NULL); // Null list
     if(l->type!=Dll_head_t_)
         Error(0x23,0x08,NULL,NULL); // Headerless list
-    
+
     // Pull
     if(l->next){
         n=l->next;
@@ -2438,7 +2413,7 @@ void Dll_Print(Dll_n *l)
     Dll_link_s *k; // Link structure
     Dll_name_s *d; // Name structure
     Stat_s     *s; // File statistics
-    
+
     if(l&&l->type==Dll_head_t_)
         list_f=1;
     for(n=l;n;n=n->next){
@@ -2461,18 +2436,18 @@ void Dll_Print(Dll_n *l)
             printf("Name: %s\n"
                    "Statistics\n"
                    "==========\n"
-                   "line_c: %i\n"
-                   "stmt_c: %i\n"
-                   "assm_c: %i\n"
-                   "comp_c: %i\n"
-                   "dire_c: %i\n"
-                   "link_c: %i\n"
-                   "name_c: %i\n"
-                   "code_c: %i\n"
-                   "data_c: %i\n"
-                   "code_s: %x\n"
-                   "data_s: %x\n"
-                   "file_s: %x\n\n",
+                   "line_c: %li\n"
+                   "stmt_c: %li\n"
+                   "assm_c: %li\n"
+                   "comp_c: %li\n"
+                   "dire_c: %li\n"
+                   "link_c: %li\n"
+                   "name_c: %li\n"
+                   "code_c: %li\n"
+                   "data_c: %li\n"
+                   "code_s: %lx\n"
+                   "data_s: %lx\n"
+                   "file_s: %lx\n\n",
                    f->name  ,s->line_c,s->stmt_c,
                    s->assm_c,s->comp_c,s->dire_c,
                    s->link_c,s->name_c,s->code_c,
@@ -2484,7 +2459,7 @@ void Dll_Print(Dll_n *l)
             k=(Dll_link_s*)n->data;
             printf("Name: %s\n"
                    "File: %s\n"
-                   "Addr: %x\n"
+                   "Addr: %lx\n"
                    "Mode: %i\n\n",
                    k->name,k->file,k->addr,k->mode);
             break;
@@ -2492,9 +2467,9 @@ void Dll_Print(Dll_n *l)
         case Dll_name_t_:
             d=(Dll_name_s*)n->data;
             printf("Name: %s\n"
-                   "Data: %x\n"
+                   "Data: %lx\n"
                    "Size: %i\n\n",
-                   d->name,d->data,d->size);
+                   d->name, d->data, d->size);
             break;
         }
         if(!list_f)
@@ -2513,23 +2488,14 @@ int Dll_Size(Dll_n *l)
 {
     int  i=0;
     Dll_n *n;
-    
+
     if(!l)
         Error(0x26,0x25,NULL,NULL); // Null list
     if(l->type!=Dll_head_t_)
         Error(0x26,0x08,NULL,NULL); // Headerless list
-    
+
     // Count size
     for(n=l->next;n;n=n->next,i++);
-    
+
     return i;
 }
-
-
-
-
-//============================================================//
-//                                                            //
-//                                                            //
-//                                                            //
-//============================================================//

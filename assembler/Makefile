@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -D__DEBUG__ -g3
-65616asm: main.o; $(CC) $^ -o $@
-main.o: main.c assembler.h data.h; $(CC) -c $<
+CFLAGS = -D__DEBUG__ -g3 -std=gnu99 -W -Wall -Werror
+65616asm: main.o; $(CC) $(CFLAGS) $^ -o $@
+main.o: main.c assembler.h data.h; $(CC) $(CFLAGS) -c $<
 clean:; rm -f *.o 65816asm

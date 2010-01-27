@@ -106,8 +106,8 @@ typedef enum Dll_t_{
 
 // Dll Node Structure
 typedef struct Dll_n{
-    Dll_n  *next; // Next list node
-    Dll_n  *prev; // Previous list node
+    struct Dll_n  *next; // Next list node
+    struct Dll_n  *prev; // Previous list node
     Dll_t_  type; // Datatype
     void   *data; // Data pointer
 }Dll_n;
