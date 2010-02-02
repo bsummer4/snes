@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -D__DEBUG__ -g3 -std=gnu99 -W -Wall -Werror
+CFLAGS = -D__DEBUG__ -g3 -std=gnu99 -W -Wall -Werror -pedantic
 
 all: 65816asm
 clean:; rm -f *.o 65816asm readme.html
