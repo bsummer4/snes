@@ -80,11 +80,32 @@
                          -- split_statements input
 
 import System.Environment
+import Text.ParserCombinators.Parsec
+
 usage = "pre input-file"
+
+-- nestCommentD = char '{' >>= skipMany (noneOf "#") >>= string "#}" >>= return ()
+-- underscoreComment = char '_' >>= junk >>= return ()
+-- printD = string "Print " >>= junk >>= return ()
+-- directive = do char '#' >>= printD <|> commentD <|> cpuD <|> pcD <|> declarD
+
+junk = many $ noneOf ";"
+stmt = do char ';'
+          spaces
+          str <- many (noneOf "; ")
+          junk
+          return str
+expr1 = do junk
+           stmt
+expr = many expr1
+
+readExprs input = case parse expr "asm" input of
+    Left err -> ["parsing error"]
+    Right val -> val
 
 -- This needs to do parsing, etc to correctly split an input program into a
 -- list of statements.
 split_into_statements i = ["stmt 1"] ++ (lines i) ++ ["stmt n"]
 main = do args <- getArgs
           input <- readFile $ args !! 0
-          putStr $ unlines $ split_into_statements input
+          putStr $ unlines $ readExprs input -- unlines $ split_into_statements input
