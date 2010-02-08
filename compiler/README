@@ -1,0 +1,35 @@
+# Examples
+
+## (+ 3 4)
+
+    ; LDA #3b
+    ; CLC
+    ; ADC #4b
+
+## (+ x y)
+
+In the caller:
+
+    ; LDA x                   Push x
+    ; PHA
+    ; LDA y                   Push y
+    ; PHA
+    ; TSC                     Make room for 1 byte of return space
+    ; CLC
+    ; ADC #1b
+    ; TCS
+    ; JSL whatever
+    ; LDA 1,S                 Return value
+    ; TSC                     Clean up the stack
+    ; SEC
+    ; SBC #3
+    ; TCS
+
+
+In the callee:
+
+    ; LDA 5,S                 First argument
+    ; CLC
+    ; ADC 4,S                 Second argument
+    ; STA 3,S                 Return value
+    ; RTS
