@@ -1,7 +1,7 @@
 (defparameter +addressing-modes-and-syntax+
   '((:implied "")
     (:accumulator "A")
-    (:immediate "#")
+    (:immediate "#w") #| TODO This needs accepts b as well. |#
     (:direct "b")
     (:direct-x-indexed "b,X")
     (:direct-y-indexed "b,Y")
@@ -48,6 +48,20 @@ how best to layout this code.
 
 (defun emit (string) (format t "~a" string) (values))
 
+(defun compile-c (expr)
+  "We support numbers and addition.  "
+  (etypecase expr
+    (number `(asm lda :immediate ,expr))
+    (list (progn (assert (eq '+ (first expr)))
+                 (case (length expr)
+                   (1 nil)
+                   (2 (compile-c (second expr)))
+                   (t `(progn
+                         (asm clc :implied)
+                         (asm lda :immediate ,(second expr))
+                         ,@(loop for x in (cddr expr)
+                                 collect `(asm adc :immediate ,x)))))))))
+
 (defmacro asm (command mode &rest args)
   (list 'emit (format nil "; ~a ~a~%"
                       (symbol-name command)
@@ -62,4 +76,10 @@ how best to layout this code.
   (asm adc :direct 4)
 "
 
-(loop do (eval (read)))
+"(loop do (eval (read)))"
+
+(loop for expr in '(3 (+) (+ 1) (+ 2 3) (+ 3 4 5 6 7 8))
+        do (format t "~a~%" expr)
+        do (eval (compile-c expr)))
+
+(quit)
