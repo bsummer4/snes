@@ -81,31 +81,50 @@
 
 import System.Environment
 import Text.ParserCombinators.Parsec
-
-usage = "pre input-file"
+import List
 
 -- nestCommentD = char '{' >>= skipMany (noneOf "#") >>= string "#}" >>= return ()
 -- underscoreComment = char '_' >>= junk >>= return ()
 -- printD = string "Print " >>= junk >>= return ()
 -- directive = do char '#' >>= printD <|> commentD <|> cpuD <|> pcD <|> declarD
+-- directive = char ';' >> spaces >> char '#' >> return "#"
 
+join = concat . intersperse " "
 junk = many $ noneOf ";"
-stmt = do char ';'
-          spaces
-          str <- many (noneOf "; ")
-          junk
-          return str
-expr1 = do junk
-           stmt
-expr = many expr1
+charTok c = char c >> spaces
+possible p = (count 1 p) <|> (count 0 p)
 
-readExprs input = case parse expr "asm" input of
-    Left err -> ["parsing error"]
+usage = "pre input-file"
+directive = charTok ';' >> charTok '#' >> many1 (letter <|> digit)
+labell = do charTok ';'
+            char '{'
+            body <- many1 (noneOf ";}\n ")
+            char '}'
+            return ("{" ++ body ++ "}")
+
+stmt = do charTok ';'
+          str <- many1 upper
+          spaces
+          arg <- possible $ many1 $ noneOf " ;\n"
+          return $ join $ str:arg
+
+parseExprs = do junk
+                result <- many (do x <- choice [ try stmt
+                                               , try directive
+                                               , labell ]
+                                   junk
+                                   return x)
+                eof
+                return result
+
+readExprs input = case parse parseExprs "asm" input of
+    Left err -> [show err]
     Right val -> val
 
 -- This needs to do parsing, etc to correctly split an input program into a
 -- list of statements.
-split_into_statements i = ["stmt 1"] ++ (lines i) ++ ["stmt n"]
+-- split_into_statements i = ["stmt 1"] ++ (lines i) ++ ["stmt n"]
 main = do args <- getArgs
           input <- readFile $ args !! 0
-          putStr $ unlines $ readExprs input -- unlines $ split_into_statements input
+          -- putStr $ unlines $ split_into_statements input
+          putStr $ unlines $ readExprs input

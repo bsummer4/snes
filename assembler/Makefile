@@ -10,3 +10,4 @@ docs: readme.html
 pre: pre.hs; ghc $(HSFLAGS) $^ -o $@
 main.o: main.c assembler.h data.h; $(CC) $(CFLAGS) -c $<
 readme.html: README; markdown < $^ > $@
+test: pre; ./pre pretest
