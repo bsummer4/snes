@@ -79,6 +79,7 @@
 -- statements filename = do input <- read filename
                          -- split_statements input
 
+module Main where
 import System.Environment
 import Text.ParserCombinators.Parsec
 import List
@@ -89,13 +90,63 @@ import List
 -- directive = do char '#' >>= printD <|> commentD <|> cpuD <|> pcD <|> declarD
 -- directive = char ';' >> spaces >> char '#' >> return "#"
 
+is_zero = (0 ==)
+empty = is_zero . length
 join = concat . intersperse " "
 junk = many $ noneOf ";"
+anyOf cs = choice $ map char cs
 charTok c = char c >> spaces
 possible p = (count 1 p) <|> (count 0 p)
+spaces1 = do space --char ' '
+             s <- spaces
+             return ()
 
 usage = "pre input-file"
-directive = charTok ';' >> charTok '#' >> many1 (letter <|> digit)
+
+size = anyOf "bwlBWL"
+name = many1 $ noneOf " ;\n-"
+hexdigit = digit <|> anyOf ['A'..'F']
+number = do char '$'
+            num <- many1 hexdigit
+            return ("$" ++ num)
+
+
+sizeName = do s <- size
+              spaces
+              n <- name
+              return $ join [[s], n]
+
+dataArray = do char '{'
+               junk <- many1 $ noneOf "}"
+               char '}'
+               return ("{" ++ junk ++ "}")
+
+dirHandlers = (map (\x -> (x, return "")) ["LoROM", "Print"]) ++
+              [ ("Data", (try dataArray) <|> sizeName)
+              , ("Name", do n <- number
+                            spaces
+                            id <- name
+                            spaces
+                            s <- size
+                            return $ join [n, id, [s]])
+              , ("File", do n <- name
+                            spaces
+                            return n)
+              ]
+
+directiveParser name = case (lookup name dirHandlers) of
+    Nothing -> return ("Error: \n    \"" ++
+                                         name
+                                         ++ "\"\n is not a valid directive. ")
+    Just val -> val >>= (return . (("#" ++ name ++ " ") ++))
+
+directive = charTok ';' >> char '#' >>
+            choice [ space >>= (return . (\x -> "# ++ \"" ++ [x] ++ "\""))
+                   , do n <- name
+                        spaces
+                        directiveParser n
+                   ]
+
 labell = do charTok ';'
             char '{'
             body <- many1 (noneOf ";}\n ")
@@ -111,7 +162,8 @@ stmt = do charTok ';'
 parseExprs = do junk
                 result <- many (do x <- choice [ try stmt
                                                , try directive
-                                               , labell ]
+                                               , try labell
+                                               , char ';' >> return [] ]
                                    junk
                                    return x)
                 eof
@@ -119,7 +171,7 @@ parseExprs = do junk
 
 readExprs input = case parse parseExprs "asm" input of
     Left err -> [show err]
-    Right val -> val
+    Right val -> filter (not . empty) val
 
 -- This needs to do parsing, etc to correctly split an input program into a
 -- list of statements.
