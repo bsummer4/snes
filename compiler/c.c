@@ -2,18 +2,18 @@
 // namespaces in c and how various issues are resolved.
 
 // Namespaces:
-// 1. Tagged types
+// 1. Tagged types:
 //  - 'struct c', 'enum c', and 'union c' are all in the same
 //    namespace, but not the same namespaces as straight-up types like
 //    'int'.
 //
 // 2. Labels
-// 3. Everything else,
+// 3. Everything else:
 //  - Types
 //  - Variables
 //  - Functions
 //
-// 4. Every Struct/union has it's own namespace
+// 4. Every Struct/union has it's own namespace within it.
 
 typedef int c;
 
@@ -25,5 +25,6 @@ c main(void) {
 c cee() {
   typedef struct c { c c; } c;
   // typedef union c { c c; } see; // This conflicts with 'struct c'
+  { c c; if (!c.c) return 0; }
   c sea;
   return see(sea.c); }
