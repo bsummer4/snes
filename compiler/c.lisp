@@ -1,119 +1,103 @@
-"
-Here is a table of syntaxes for operators.  I don't like some of the
-things I chose (like _ instead of |), so if you have some better ideas
-tell me.
+(load "lib.lisp")
+(load "asm.lisp")
 
-========= ============ ================
-C         Sexp c       More lispy
-========= ============ ================
-+a        (+ a)        (+ a)
-a + b     (+ a b)      (+ a b c ...)
-++a       (++* a)      (preincr a)
-a++       (++ a)       (incr a)
-a += b    (+= a b)     (incr a b)
--a        (- a)        (- a)
-a - b     (- a b)      (- a b c)
---a       (--* a)      (predecr a)
-a--       (-- a)       (decr a)
-a -= b    (-= a b)     (decr a b)
-a * b     (* a b)      (* a b)
-a *= b    (*= a b)     (set * a b)
-a / b     (/ a b)      (/ a b)
-a /= b    (/= a b)     (set / a b)
-a % b     (% a b)      (mod a b)
-a %= b    (%= a b)     (set mod a b)
-a < b     (< a b)      (< a b ...)
-a <= b    (<= a b)     (<= a b ...)
-a > b     (> a b)      (> a b ...)
-a >= b    (>= a b)     (>= a b ...)
-a != b    (!= a b)     (!= a b ...)
-a == b    (== a b)     (== a b ...)
-!a        (! a)        (not a)
-a && b    (&& a b)     (and a b ...)
-a || b    (or a b)     (or a b ...)
-a << b    (<< a b)     (lshift a b)
-a <<= b   (<<= a b)    (set lshift a b)
-a >> b    (>> a b)     (rshift a b)
-a >>= b   (>>= a b)    (set rshift a b)
-~a        (~ a)        (nnot a)
-a & b     (& a b)      (nand a b)
-a &= b    (&= a b)     (set nand a b)
-a | b     (_ a b)      (!or a b)
-a |= b    (_= a b)     (set !or a b)
-a ^ b     (^ a b)      (^ a b ...)
-a ^= b    (^= a b)     (set ^ a b ...)
-a = b     (= a b)      (set a b)
-a()       (a)          (a)
-a[b]      ([] a b)     (a b)
-*a        (@ a)        (a)
-&a        (& a)        (? a)
-a->b      (-> a :b)    (a :b)
-(type)a   (type a)     (type a)
-a , b     (do a b)     (do a b)
-a ? b : c (? a b c)    (if a b c)
-sizeof a  (sizeof a)   (size a)
-========= ============ ================
+(defstruct scope labels objects types)
+(defun new-scope ()
+  (make-scope :labels (make-hash-table)
+              :objects (make-hash-table)
+              :types (make-hash-table)))
 
-Some expressions:
+(defvar *scopes* (list (new-scope)))
+(defvar *global-scope* (first *scopes*))
 
-    a.b.c[2]
-    (a :b :c 2)
-    ([] (@. (@. a :b) :c) 2)
+(defun labels-table () (scope-labels (first *scopes*)))
+(defun objects-table () (scope-objects (first *scopes*)))
+(defun types-table () (scope-types (first *scopes*)))
 
-    a->b.c[(x == 3) ? 1 : 2] + 3 + a->a
-    (+ (a :b :c (if (== x 3) 1 2)) 3 (a :a))
-    (+ ([] (.@ (-> a :b) :c) (? f 1 2)) 3 (-> a a))
+(defun compile-c (expr)
+  "We support numbers and addition.  "
+  (etypecase expr
+    (number `(asm lda :immediate ,expr))
+    (list (progn (assert (eq '+ (first expr)))
+                 (case (length expr)
+                   (1 nil)
+                   (2 (compile-c (second expr)))
+                   (t `(progn
+                         (asm clc :implied)
+                         (asm lda :immediate ,(second expr))
+                         ,@(loop for x in (cddr expr)
+                                 collect `(asm adc :immediate ,x)))))))))
 
+(defmacro c-label (name)
+  (unless (symbolp name) (insult))
+  `(emit (format nil "{~a}" (gethash ',name (labels-table)))))
 
-Some functions:
+(defmacro c-goto (name)
+  (unless (symbolp name) (insult))
+  (let ((tmp (gensym)))
+    `(let ((,tmp (gethash ',name (labels-table))))
+       (if ,tmp
+           (emit (format nil "BRA {~a}" ,tmp))
+           (error "Trying to goto a non-existent label: ~a" ',name)))))
 
-C:
+(defun grab-labels (code)
+  "Returns all label names in the code block.  "
+  (flet ((is-label? (expr)
+           (and (listp expr)
+                (= 2 (length expr))
+                (eq (first expr) 'c-label)
+                (symbolp (second expr)))))
+    (mapcar #'second (filter #'is-label? code))))
 
-    char *strcpy(char *dest, const char *src)
-    {
-       char *save = dest;
-       while (*dest++ = *src++);
-       return save;
-    }
+(defun scan-labels (code)
+  "Return an alist mapping labels in code to their new globally-unique
+   names. "
+  (let ((labels (grab-labels code)))
+    (aif (non-unique-items labels)
+         (error
+          "The following labels appear more than once in the same scope: ~a"
+          it))
+    (mapcar (lambda (label) (cons label (gensym (symbol-name label))))
+            labels)))
 
+(defun unprogn (code)
+  (if (and (listp code) (eq (first code) 'progn))
+      (flatten (mapcar #'unprogn (cdr code)))
+      (list code)))
 
-Sexp C:
+(defun c-preexpand (code)
+  "Recursively pre-expand and unprogn some specific macros so we can
+   analyze the resulting code.  "
+  (let ((to-expand '(c-if)))
+    (flatten
+     (loop for stmt in code
+        collect (if (and (listp stmt) (member (first stmt) to-expand))
+                    (unprogn (macroexpand-1 stmt))
+                    (list stmt))))))
 
-    (defun strcpy (dest src)
-      (type :*char (const :*char) -> :*char)
-      (var save dest :*char)
-      (while (== (@ (++ dest)) (@ (++ dest))))
-      (return save))
+(defmacro with-scope (&body body)
+  `(let ((*scopes* (cons (new-scope) *scopes*)))
+     ,@body
+     (traceme (hash-table->alist (labels-table)))
+     (values)))
 
+(defmacro c-fn (name args &body code)
+  (when args (error "Function arguments are not supported.  "))
+  (let ((code (c-preexpand code)))
+    `(with-scope
+         (alist-to-table ',(scan-labels code) (labels-table))
+       (emit ,(format nil "#Code w ~a" name)) ;;(gensym (symbol-name name))
+       ,@code
+       (asm rts :implied))))
 
-More lispy:
-
-    (defun strcpy (dest src)
-      (type :*char (const :*char) -> :*char)
-      (let ((save dest))
-        (while (== ((++ dest)) ((++ src))))
-        save))
-
-Another example
-
-void f (int n, char x[n])
-{
-  for (int i = 0; ii < n; ii++) {
-    if (!(i % 3)) {
-      x[i] = '\0'
-    }
-  }
-}
-
-(defun f (n x)
-  (type :int (:char n))
-  (for ((var i 0 :int) (< ii n) (++ i))
-    (if (! (% i 3))
-      (= ([] x i) #\null))))
-
-(defun f (n x)
-  (type int (char n))
-  (iter (for i below n)
-        (if (divisible i 3)
-            (set (x i) #\null))))
-"
+(defmacro c-if (test then else)
+  (let ((else-label (gensym "ELSE"))
+        (end-label (gensym "END")))
+    `(progn
+       ,test
+       (emit (format nil "BEQ {~a}" (gethash ',else-label (labels-table))))
+       ,then
+       (c-goto ,end-label)
+       (c-label ,else-label)
+       ,else
+       (c-label ,end-label))))
