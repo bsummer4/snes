@@ -1,3 +1,5 @@
+"This is the code that actually creates the textual asm output.  "
+
 (in-package #:cs400-compiler)
 
 (defparameter +addressing-modes-and-syntax+

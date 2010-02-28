@@ -1,6 +1,6 @@
-(in-package #:cs400-compiler)
+"Just some general utillity code.  "
 
-"Utillity Code"
+(in-package #:cs400-compiler)
 
 (defun insult () (error "u is dumb"))
 (defun traceme (x) x)

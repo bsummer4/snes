@@ -1,3 +1,5 @@
+"Implements the c compiler.  "
+
 (in-package #:cs400-compiler)
 
 (defstruct scope labels objects types name)
