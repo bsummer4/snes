@@ -1,9 +1,11 @@
-(load "lib.lisp")
+(in-package #:cs400-compiler)
 
 (defparameter +addressing-modes-and-syntax+
   '((:implied "")
     (:accumulator "A")
-    (:immediate "#w") #| TODO This needs accepts b as well. |#
+    (:immediate "#b")
+    (:immediate-w "#w")
+    #| TODO What are the other kinds of 'immediate's? |#
     (:direct "b")
     (:direct-x-indexed "b,X")
     (:direct-y-indexed "b,Y")
@@ -29,7 +31,10 @@
 (defun asm-subformat (format-char argument)
   (etypecase argument
     (symbol (symbol-name argument))
-    (number (format nil (ecase format-char (#\b "~db") (#\w "~dw") (#\l "~dl"))
+    (number (format nil (ecase format-char
+                          (#\b "$~2,'0xb")
+                          (#\w "$~4,'0xw")
+                          (#\l "$~6,'0xl"))
                     argument))))
 
 (defun asm-format (format-string &rest arguments)

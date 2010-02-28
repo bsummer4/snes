@@ -1,11 +1,9 @@
+(in-package #:cs400-compiler)
+
 "Utillity Code"
 
-(defparameter +eof+ (gensym "EOF"))
-
-;; Functions
 (defun insult () (error "u is dumb"))
-(defun traceme (x) (declare (ignore x)) (values))
-
+(defun traceme (x) x)
 (defun flatten (lists) (apply #'append lists))
 (defun lookup (dict key) (second (assoc key dict)))
 (defun filter (predicate seq) (remove-if-not predicate seq))
@@ -43,3 +41,14 @@
      ,(if else
           `(if it ,then ,else)
           `(if it ,then))))
+
+(defun alist->plist (alist)
+  (loop for (key . value) in alist
+        collect key
+        collect value))
+
+(defun hash-table->plist (table)
+  (alist->plist (hash-table->alist table)))
+
+(defmethod print-object ((table hash-table) stream)
+  (format stream "[dict~{ ~s~}]" (hash-table->plist table)))

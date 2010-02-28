@@ -1,27 +1,27 @@
-(load "lib.lisp")
-(load "asm.lisp")
+(in-package #:cs400-compiler)
 
-(defstruct scope labels objects types)
-(defun new-scope ()
+(defstruct scope labels objects types name)
+(defun new-scope (name)
   (make-scope :labels (make-hash-table)
               :objects (make-hash-table)
-              :types (make-hash-table)))
+              :types (make-hash-table)
+              :name name))
 
-(defvar *scopes* (list (new-scope)))
-(defvar *global-scope* (first *scopes*))
+(defparameter *scopes* (list (new-scope 'global)))
+(defparameter *global-scope* (first *scopes*))
 
 (defun labels-table () (scope-labels (first *scopes*)))
 (defun objects-table () (scope-objects (first *scopes*)))
 (defun types-table () (scope-types (first *scopes*)))
 
-(defun compile-c (expr)
+(defmacro compile-c (expr)
   "We support numbers and addition.  "
   (etypecase expr
     (number `(asm lda :immediate ,expr))
     (list (progn (assert (eq '+ (first expr)))
                  (case (length expr)
                    (1 nil)
-                   (2 (compile-c (second expr)))
+                   (2 `(compile-c ,(second expr)))
                    (t `(progn
                          (asm clc :implied)
                          (asm lda :immediate ,(second expr))
@@ -75,8 +75,8 @@
                     (unprogn (macroexpand-1 stmt))
                     (list stmt))))))
 
-(defmacro with-scope (&body body)
-  `(let ((*scopes* (cons (new-scope) *scopes*)))
+(defmacro with-scope (name &body body)
+  `(let ((*scopes* (cons (new-scope ,name) *scopes*)))
      ,@body
      (traceme (hash-table->alist (labels-table)))
      (values)))
@@ -84,16 +84,21 @@
 (defmacro c-fn (name args &body code)
   (when args (error "Function arguments are not supported.  "))
   (let ((code (c-preexpand code)))
-    `(with-scope
-         (alist-to-table ',(scan-labels code) (labels-table))
+    `(with-scope ',name
+       (alist-to-table ',(scan-labels code) (labels-table))
+       (setf (gethash ',name (scope-objects *global-scope*))
+             (traceme (list :scope *scopes*)))
        (emit ,(format nil "#Code w ~a" name)) ;;(gensym (symbol-name name))
        ,@code
        (asm rts :implied))))
 
+;; TODO Make sure we are in an actual function scope.
 (defmacro c-if (test then else)
   (let ((else-label (gensym "ELSE"))
         (end-label (gensym "END")))
     `(progn
+       (when (eq (first *scopes*) *global-scope*)
+         (error "Conditional in global scope."))
        ,test
        (emit (format nil "BEQ {~a}" (gethash ',else-label (labels-table))))
        ,then
