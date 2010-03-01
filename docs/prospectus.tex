@@ -14,8 +14,41 @@ will write an application for the Super Nintendo Entertainment System
 (SNES) using the tools we develop.
 
 \subsection{Design Decisions}
-\subsubsection{Why a Compiler}
 \subsubsection{Using C}
+
+The C programming language is ideal choice as a source language for
+several reasons.  First, it has a fairly direct translation into
+assembly language.  In fact, C is often described as a portable
+assembly language.  Because of its close to one-to-one correspondence
+with assembly, and because it allows bit manipulation and direct
+access to memory, code written in C compiles into fast executable
+code.  Second, C is a real world language.  While it is often
+described as a "systems language", it finds uses in scientific
+computing, gaming, and even applications programming. Because of the
+limitations of the 65816 architecture, C is the standard choice for an
+implementor that wants to write applications in a "real" high level
+language in an embedded environment. Finally, C is a small language.
+The entire language (C99) only has thirty-seven keywords.  These
+reasons make C an ideal language for a semester long compiler
+construction project.
+
+\subsection{Why 65816?}
+
+It is fair to ask why the 65816 processor was chosen as the target
+language for our compiler.  After all, the processor is nearly 25
+years old, and has several limitations which make writing code in a
+high a level language difficult.  The primary considerations that went
+into our decision to use the 65816 architecture are as thus: (1) There
+continues to be an active development community that produces SNES
+games.  Unfortunately, there are no free C (or other high level
+language) compilers available to this community.  Commercial compilers
+exist, but they are not actively maintained.  (2) Our teammate, Parker
+Trofatter, has implmented an assembler for the 65816 architecture,
+developed games for the SNES, and as such, has an expert level
+knowledge of the architecture. Furthermore, the limitations of the
+architecture force us to make design compromises and innovations that
+make compiler hacking fun.
+
 \subsubsection{Using Lisp Syntax and Lisp as an Implementation Language}
 
 Using Lisp syntax instead of C syntax has many advantages.  First it
