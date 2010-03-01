@@ -1,0 +1,100 @@
+\documentclass {article}
+\usepackage{verbatim}
+\usepackage{setspace}
+\doublespacing
+\begin {document}
+\section {CS400 Project}
+\subsection{Abstract}
+
+Our team proposes to implement a compiler that accepts a language of
+our own design targeting the 65816 microprocessor, and thus the 65xx
+family by extensions.  The language will have C-like constructs and
+Lisp-like syntax.  To demonstrate the viability of our compiler, we
+will write an application for the Super Nintendo Entertainment System
+(SNES) using the tools we develop.
+
+\subsection{Design Decisions}
+\subsubsection{Why a Compiler}
+\subsubsection{Using C}
+\subsubsection{Using Lisp Syntax and Lisp as an Implementation Language}
+
+Using Lisp syntax instead of C syntax has many advantages.  First it
+basically eliminates the difficult (and very boring) parsing step.
+Writing a Lisp parser is utterly trivial.  Furthermore, since we are
+using Common Lisp as our implementation language, the entire parser is
+the following code:
+
+\begin{verbatim}
+    (read)
+\end{verbatim}
+
+Not only is the parsing easy, but the data structure that
+s-expressions represent work great as an abstract syntax tree.  Common
+Lisp is basically made specifically for this kind of work, so it
+includes lots of extremely convenient code for manipulating code in
+this way.  S-expressions look awesome.
+
+Basically, using s-expressions saves us a ton of work, but it does
+much more than that.  We can expose the full power of Common Lisp as a
+sort of advanced ``preprocessor.''  With a system like this, the user
+can implement arbitrarily complex language features by writing Common
+Lisp macros (mixed with his code), and then using them.  For example,
+it would be pretty easy to add a simple object system.
+
+We can also use this ``preprocessor'' (it's really much more than
+that) to implement a lot of the compiler itself.  Almost all Common
+Lisp implementations actually implement very large subsets of the
+language in straight-up lisp code using macros.  For example, the
+looping constructs, the entire object system, etc, are almost always
+implemented in lisp with macros.
+
+\subsubsection{The Target Architecture}
+\subsection{Hardware Issues}
+\subsection{Simple Compilation Examples}
+\subsection{Implementation Strategy}
+
+\begin {verbatim}
+(5) Improve compiler useability (as time permits)
+  Implement code optimization, a warning system, extend the language to try to
+  increase performance, optional type declarations, complex data types, etc.
+
+(6) SNES Application (3 weeks)
+  Learn about SNES architecture.  Port existing assembly programs to our
+  language.  Program system features, such as interupt routines, graphical
+  routines, arithmetic operations, etc.  Finally, produce an application that
+  shows the functionality of our work.
+
+(7) Presentation (final week)
+  Summarize and present our research.
+
+
+Enumerations on current design choices:
+
+Scheme is a dialect of the List Processing (Lisp) functional
+programming language that distinguishes itself from other dialects in
+its minimalist philosophy.  Despite a small core language, the
+recursive nature of Lisp makes for terse statements, and Scheme has
+powerful facilities to extend its functional repertoire. Scheme is
+noteworthy for being an easy language to implement an interpreter for,
+and thus is popular in academic and hobbyist circles.  Consequently,
+there is much literature on the subject of implementing an
+interpreter.  We may have to modify Scheme to efficiently meet our
+target.
+
+To implement Scheme, we will use Haskell, another functional
+programming language.  Haskell provides rich pattern matching
+functionality that greatly simplifies parsing statements.  This, in
+conjunction with Scheme's diminutive language, will make for concise
+compiler source code.
+
+Compiling to 65816 seems to be the current plan.  All the other
+targets already have several implementations.  Compiling to 65816 will
+probably require non-insignificant changes to the language before we
+can see acceptable performance.  Not using standard Scheme has
+disadvantages: we can't use other implementations to test ours, we
+wont be able to compile existing Scheme code, etc.  However, it does
+give us a chance to experiment with optimization techniques like those
+listed in the 'Goals' section.
+
+\end{verbatim}
+\end{document}
