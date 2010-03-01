@@ -6,7 +6,6 @@
 \section {CS400 Project}
 \subsection{Abstract}
 
-\paragraph{}
 Our team proposes to implement a compiler that accepts a language of
 our own design targeting the 65816 microprocessor, and thus the 65xx
 family by extensions.  The language will have C-like constructs and
@@ -17,7 +16,6 @@ will write an application for the Super Nintendo Entertainment System
 \subsection{Design Decisions}
 \subsubsection{Using C}
 
-\paragraph{}
 The C programming language is ideal choice as a source language for
 several reasons.  First, it has a fairly direct translation into
 assembly language.  In fact, C is often described as a portable
@@ -36,7 +34,6 @@ construction project.
 
 \subsection{Why 65816?}
 
-\paragraph{}
 It is fair to ask why the 65816 processor was chosen as the target
 language for our compiler.  After all, the processor is nearly 25
 years old, and has several limitations which make writing code in a
@@ -46,7 +43,7 @@ continues to be an active development community that produces SNES
 games.  Unfortunately, there are no free C (or other high level
 language) compilers available to this community.  Commercial compilers
 exist, but they are not actively maintained.  (2) Our teammate, Parker
-Trofatter, has implemented an assembler for the 65816 architecture,
+Trofatter, has implmented an assembler for the 65816 architecture,
 developed games for the SNES, and as such, has an expert level
 knowledge of the architecture. Furthermore, the limitations of the
 architecture force us to make design compromises and innovations that
@@ -54,7 +51,6 @@ make compiler hacking fun.
 
 \subsubsection{Using Lisp Syntax and Lisp as an Implementation Language}
 
-\paragraph{}
 Using Lisp syntax instead of C syntax has many advantages.  First it
 basically eliminates the difficult (and very boring) parsing step.
 Writing a Lisp parser is utterly trivial.  Furthermore, since we are
@@ -65,24 +61,19 @@ the following code:
     (read)
 \end{verbatim}
 
-\paragraph{}
 Not only is the parsing easy, but the data structure that
 s-expressions represent work great as an abstract syntax tree.  Common
 Lisp is basically made specifically for this kind of work, so it
 includes lots of extremely convenient code for manipulating code in
 this way.  S-expressions look awesome.
 
-\paragraph{}
 Basically, using s-expressions saves us a ton of work, but it does
 much more than that.  We can expose the full power of Common Lisp as a
 sort of advanced ``preprocessor.''  With a system like this, the user
 can implement arbitrarily complex language features by writing Common
 Lisp macros (mixed with his code), and then using them.  For example,
-it would be pretty easy to add a simple object system.  I've even
-hacked out some code for this, but it's currently too primitive to
-show.
+it would be pretty easy to add a simple object system.
 
-\paragraph{}
 We can also use this ``preprocessor'' (it's really much more than
 that) to implement a lot of the compiler itself.  Almost all Common
 Lisp implementations actually implement very large subsets of the
@@ -90,9 +81,67 @@ language in straight-up lisp code using macros.  For example, the
 looping constructs, the entire object system, etc, are almost always
 implemented in lisp with macros.
 
-
-
+\subsubsection{The Target Architecture}
 \subsection{Hardware Issues}
+\paragraph{}
+There are several quirks of the 65816 architecture which provide
+challenges for compiler construction.  First, there is only one
+general purpose register the 'A' or 'accumulator' register.  Second,
+memory is divided into several 'banks', and while data can cross bank
+boundaries, code cannot.  There are two jump subroutine operations:
+JSR and JSL.  JSR is used when jumping to code inside of the current
+bank, while JSL is used to jump to code in other banks.  As such, code
+must be organized in such a way that as few JSL's as possible are
+used.  There are several different types of RAM in the 65816
+architecture, and they are accessed differently, and used for
+different purposes.  It is difficult to define general purpose memory
+access mechanisms.  As mentioned, RAM is located inside several banks.
+
 \subsection{Simple Compilation Examples}
 \subsection{Implementation Strategy}
+
+\begin {verbatim}
+(5) Improve compiler useability (as time permits)
+  Implement code optimization, a warning system, extend the language to try to
+  increase performance, optional type declarations, complex data types, etc.
+
+(6) SNES Application (3 weeks)
+  Learn about SNES architecture.  Port existing assembly programs to our
+  language.  Program system features, such as interupt routines, graphical
+  routines, arithmetic operations, etc.  Finally, produce an application that
+  shows the functionality of our work.
+
+(7) Presentation (final week)
+  Summarize and present our research.
+
+
+Enumerations on current design choices:
+
+Scheme is a dialect of the List Processing (Lisp) functional
+programming language that distinguishes itself from other dialects in
+its minimalist philosophy.  Despite a small core language, the
+recursive nature of Lisp makes for terse statements, and Scheme has
+powerful facilities to extend its functional repertoire. Scheme is
+noteworthy for being an easy language to implement an interpreter for,
+and thus is popular in academic and hobbyist circles.  Consequently,
+there is much literature on the subject of implementing an
+interpreter.  We may have to modify Scheme to efficiently meet our
+target.
+
+To implement Scheme, we will use Haskell, another functional
+programming language.  Haskell provides rich pattern matching
+functionality that greatly simplifies parsing statements.  This, in
+conjunction with Scheme's diminutive language, will make for concise
+compiler source code.
+
+Compiling to 65816 seems to be the current plan.  All the other
+targets already have several implementations.  Compiling to 65816 will
+probably require non-insignificant changes to the language before we
+can see acceptable performance.  Not using standard Scheme has
+disadvantages: we can't use other implementations to test ours, we
+wont be able to compile existing Scheme code, etc.  However, it does
+give us a chance to experiment with optimization techniques like those
+listed in the 'Goals' section.
+
+\end{verbatim}
 \end{document}
