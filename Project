@@ -1,1 +1,3 @@
 project "cs400"
+to build do make
+to clean do {make clean}
