@@ -9,11 +9,14 @@
           (asm sta :direct ,addr)))
 
 (c-fn main ()
-
   "Take the processor out of compatibiltiy mode.  "
+  (c-var x :int)
+  (c-var y :int)
+
   (8-bit-mode)
   (asm clc :implied)
   (asm xce :implied)
+  (c-var x :int) ;; This is invalid
 
   "Set up some memory to cycle colors.  "
   (16-bit-mode)

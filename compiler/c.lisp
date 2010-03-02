@@ -37,6 +37,13 @@
                          ,@(loop for x in (cddr expr)
                                  collect `(asm adc :immediate ,x)))))))))
 
+(defmacro c-var (name type &optional value)
+  "TODO This code will be seen eliminated by the c-fn macro if it's in
+        a valid position.  "
+  (declare (ignore name type value))
+  (return-from c-var (values))
+  (error "Variable declaration in an invalid position"))
+
 (defmacro c-label (name)
   (unless (symbolp name) (insult))
   `(emit (format nil "{~a}" (gethash ',name *labels*))))
@@ -48,6 +55,20 @@
        (if ,tmp
            (emit (format nil "BRA {~a}" ,tmp))
            (error "Trying to goto a non-existent label: ~a" ',name)))))
+
+(defun grab-vars (code)
+  "Returns all variable names declared at the top of CODE.  "
+  (flet ((is-var? (expr)
+           (and (listp expr)
+                (member (length expr) '(3 4) :test #'eql)
+                (eq (first expr) 'c-var)
+                (symbolp (second expr))
+                (symbolp (third expr)))))
+    (loop for expr in code
+          until (not (or (stringp expr)
+                         (is-var? expr)))
+          unless (stringp expr) ;; Ignore Docstrings
+          collect (second expr))))
 
 (defun grab-labels (code)
   "Returns all label names in the code block.  "
@@ -93,7 +114,9 @@
 (defmacro c-fn (name args &body code)
   (when args (error "Function arguments are not supported.  "))
   (let* ((code (c-preexpand code))
-         (c-labels (scan-labels code)))
+         (c-labels (scan-labels code))
+         (c-vars (grab-vars code)))
+    (format *error-output* "~a" c-vars)
     `(let ((*labels* (make-hash-table)))
        (with-scope ',name
          (alist-to-table ',c-labels *labels*)
