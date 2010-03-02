@@ -19,14 +19,14 @@
   (16-bit-mode)
   (write-w #x00F0 #x0000)
   (write-w #x00F2 #x0000)
- 
+
   "Initialize video"
   (8-bit-mode)
   (asm lda :immediate #x0F)
   (asm sta :absolute #x2100)
   (asm lda :immediate #x00)
   (asm sta :absolute #x2121)
-  
+
   (c-label yay)
 
   "Calculate the color to display"
@@ -42,10 +42,10 @@
           (asm pha :implied) ;; stash A for later
           (asm lda :absolute #x00F0)
           (asm clc :implied)
-          (asm adc :immediate-w #x000F)
+          (asm adc :immediate-w #x0001)
           (asm sta :absolute #x00F0)
           (asm pla :implied))
- 
+
         (asm lda :immediate-w #x0000))
 
   "Set the screen color"
@@ -57,7 +57,7 @@
   ;; *(0x00F2) = !(*(0x00F2))
   (16-bit-mode)
   (c-if (asm lda :absolute #x00F2)
-        (write-w #x00F2 #x0000)
+        (write-w #x00F2 #x0001)
         (write-w #x00F2 #x0001))
 
   (c-goto yay))  ;; Infinte loop
