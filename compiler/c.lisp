@@ -2,19 +2,26 @@
 
 (in-package #:cs400-compiler)
 
-(defstruct scope labels objects types name)
+;; The point of giving scopes names is to help generate better error
+;; messages and better names of generated names.  For exapmle an
+;; struct without a type name needs to have a type name generated.
+(defstruct scope objects types name)
 (defun new-scope (name)
-  (make-scope :labels (make-hash-table)
-              :objects (make-hash-table)
+  (make-scope :objects (make-hash-table)
               :types (make-hash-table)
               :name name))
 
 (defparameter *scopes* (list (new-scope 'global)))
 (defparameter *global-scope* (first *scopes*))
 
-(defun labels-table () (scope-labels (first *scopes*)))
+;; Lables don't have nested scoping, so we simply keep track of the
+;; current scope as a hash-table.  There is no global labels scope, so
+;; it will be nil at the top level.
+(defparameter *labels* nil)
+
 (defun objects-table () (scope-objects (first *scopes*)))
 (defun types-table () (scope-types (first *scopes*)))
+
 
 (defmacro compile-c (expr)
   "We support numbers and addition.  "
@@ -32,12 +39,12 @@
 
 (defmacro c-label (name)
   (unless (symbolp name) (insult))
-  `(emit (format nil "{~a}" (gethash ',name (labels-table)))))
+  `(emit (format nil "{~a}" (gethash ',name *labels*))))
 
 (defmacro c-goto (name)
   (unless (symbolp name) (insult))
   (let ((tmp (gensym)))
-    `(let ((,tmp (gethash ',name (labels-table))))
+    `(let ((,tmp (gethash ',name *labels*)))
        (if ,tmp
            (emit (format nil "BRA {~a}" ,tmp))
            (error "Trying to goto a non-existent label: ~a" ',name)))))
@@ -80,29 +87,30 @@
 (defmacro with-scope (name &body body)
   `(let ((*scopes* (cons (new-scope ,name) *scopes*)))
      ,@body
-     (traceme (hash-table->alist (labels-table)))
      (values)))
 
+(defun in-function? () (not (eq (first *scopes*) *global-scope*)))
 (defmacro c-fn (name args &body code)
   (when args (error "Function arguments are not supported.  "))
-  (let ((code (c-preexpand code)))
-    `(with-scope ',name
-       (alist-to-table ',(scan-labels code) (labels-table))
-       (setf (gethash ',name (scope-objects *global-scope*))
-             (traceme (list :scope *scopes*)))
-       (emit ,(format nil "#Code w ~a" name)) ;;(gensym (symbol-name name))
-       ,@code
-       (asm rts :implied))))
+  (let* ((code (c-preexpand code))
+         (c-labels (scan-labels code)))
+    `(let ((*labels* (make-hash-table)))
+       (with-scope ',name
+         (alist-to-table ',c-labels *labels*)
+         (setf (gethash ',name (scope-objects *global-scope*))
+               (traceme (list :scope *scopes*)))
+         (emit ,(format nil "#Code w ~a" name)) ;;(gensym (symbol-name name))
+         ,@code
+         (asm rts :implied)))))
 
-;; TODO Make sure we are in an actual function scope.
 (defmacro c-if (test then else)
   (let ((else-label (gensym "ELSE"))
         (end-label (gensym "END")))
     `(progn
-       (when (eq (first *scopes*) *global-scope*)
-         (error "Conditional in global scope."))
+       (unless (in-function?)
+         (error "All code must be inside a function.  "))
        ,test
-       (emit (format nil "BEQ {~a}" (gethash ',else-label (labels-table))))
+       (emit (format nil "BEQ {~a}" (gethash ',else-label *labels*)))
        ,then
        (c-goto ,end-label)
        (c-label ,else-label)
