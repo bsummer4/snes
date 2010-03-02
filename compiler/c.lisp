@@ -34,6 +34,16 @@
 (defun types-table () (scope-types (first *scopes*)))
 
 
+"## Global Memory Allocation"
+(defparameter *next-available-global-space* 0
+  "This will be ***MODIFIED*** when new global space is requested.  ")
+
+(defun allocate-global (size)
+  (prog1
+      *next-available-global-space*
+      (incf *next-available-global-space* size)))
+
+
 "## Compiler Macros.  "
 
 (defmacro compile-c (expr)
@@ -50,12 +60,22 @@
                          ,@(loop for x in (cddr expr)
                                  collect `(asm adc :immediate ,x)))))))))
 
+(defun allocate-storage (size type)
+  (ecase type
+    (:static (allocate-global size))))
+
 (defmacro c-var (name type &optional value)
-  "TODO This code will be seen eliminated by the c-fn macro if it's in
-        a valid position.  "
-  (declare (ignore name type value))
-  (return-from c-var (values))
-  (error "Variable declaration in an invalid position"))
+  "This expands into code that modifies the table at (objects-table),
+   and calls allocate-storage.  "
+  (when value (error "Setting variables is not implemented.  "))
+  (let ((size 2)) ;; replace 2 with (size-of type)
+    `(let ((storage-class (prog1 :static (if (in-function?) :auto :static)))) ;; only :static storage for now
+       (when (in-table? ',name (objects-table))
+         (error "More than one declaration of variable ~a in the same scope"
+                ',name))
+       (setf (gethash ',name (objects-table))
+             (new-var ',name ,type storage-class
+                      (allocate-storage ,size storage-class))))))
 
 (defmacro c-label (name)
   (unless (symbolp name) (insult))
@@ -126,7 +146,8 @@
 (defun in-function? () (not (eq (first *scopes*) *global-scope*)))
 (defmacro c-fn (name args &body code)
   (when args (error "Function arguments are not supported.  "))
-  (let* ((code (c-preexpand code))
+  (let* ((input-code code)
+         (code (c-preexpand code))
          (c-labels (scan-labels code))
          (c-vars (grab-vars code)))
     (format *error-output* "~a" c-vars)
@@ -134,7 +155,8 @@
        (with-scope ',name
          (alist-to-table ',c-labels *labels*)
          (setf (gethash ',name (scope-objects *global-scope*))
-               (traceme (list :scope *scopes*)))
+               (list :scope *scopes*
+                            :code ',input-code))
          (emit ,(format nil "#Code w ~a" name)) ;;(gensym (symbol-name name))
          ,@code
          (asm rts :implied)))))

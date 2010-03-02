@@ -8,6 +8,9 @@
   `(progn (asm lda :immediate-w ,value)
           (asm sta :direct ,addr)))
 
+(c-var fuck-space :int)
+(c-var more-fuck-space :int)
+
 (c-fn main ()
   "Take the processor out of compatibiltiy mode.  "
   (c-var x :int)
@@ -16,7 +19,6 @@
   (8-bit-mode)
   (asm clc :implied)
   (asm xce :implied)
-  (c-var x :int) ;; This is invalid
 
   "Set up some memory to cycle colors.  "
   (16-bit-mode)
