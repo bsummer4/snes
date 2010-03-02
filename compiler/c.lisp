@@ -1,11 +1,14 @@
-"Implements the c compiler.  "
+"# C Compilaiton"
 
 (in-package #:cs400-compiler)
 
-;; The point of giving scopes names is to help generate better error
-;; messages and better names of generated names.  For exapmle an
-;; struct without a type name needs to have a type name generated.
-(defstruct scope objects types name)
+"## Data structures and special variables.  "
+
+(defstruct scope
+  "The point of giving scopes names is to help generate better error
+   messages and better names of generated names.  For exapmle an
+   struct without a type name needs to have a type name generated."
+  objects types name)
 (defun new-scope (name)
   (make-scope :objects (make-hash-table)
               :types (make-hash-table)
@@ -14,14 +17,24 @@
 (defparameter *scopes* (list (new-scope 'global)))
 (defparameter *global-scope* (first *scopes*))
 
-;; Lables don't have nested scoping, so we simply keep track of the
-;; current scope as a hash-table.  There is no global labels scope, so
-;; it will be nil at the top level.
-(defparameter *labels* nil)
+(defstruct c-var name type storage-class address)
+(defun new-var (name type storage-class address)
+  (make-c-var :name name
+              :type type
+              :storage-class storage-class
+              :address address))
+
+(defparameter *labels* nil
+  "type: (or hash-table null).  Lables don't have nested scoping, so
+   we only need to keep track of the current scope insead of a keeping
+   a stack of scopes like other symbols.  There is no global labels
+   scope, so it will be nil at the top level.  ")
 
 (defun objects-table () (scope-objects (first *scopes*)))
 (defun types-table () (scope-types (first *scopes*)))
 
+
+"## Compiler Macros.  "
 
 (defmacro compile-c (expr)
   "We support numbers and addition.  "
