@@ -120,44 +120,44 @@
   collect (cons (second expr) (third expr)))))
 
 (defun grab-labels (code)
-"Returns all label names in the code block.  "
-(flet ((is-label? (expr)
-   (and (listp expr)
-        (= 2 (length expr))
-        (eq (first expr) 'c-label)
-        (symbolp (second expr)))))
-(mapcar #'second (filter #'is-label? code))))
+  "Returns all label names in the code block.  "
+  (flet ((is-label? (expr)
+           (and (listp expr)
+                (= 2 (length expr))
+                (eq (first expr) 'c-label)
+                (symbolp (second expr)))))
+    (mapcar #'second (filter #'is-label? code))))
 
 (defun scan-labels (code)
-"Return an alist mapping labels in code to their new globally-unique
-names. "
-(let ((labels (grab-labels code)))
-(aif (non-unique-items labels)
- (error
-  "The following labels appear more than once in the same scope: ~a"
-  it))
-(mapcar (lambda (label) (cons label (gensym (symbol-name label))))
-    labels)))
+  "Return an alist mapping labels in code to their new globally-unique
+   names. "
+  (let ((labels (grab-labels code)))
+    (aif (non-unique-items labels)
+         (error
+          "The following labels appear more than once in the same scope: ~a"
+          it))
+    (mapcar (lambda (label) (cons label (gensym (symbol-name label))))
+            labels)))
 
 (defun unprogn (code)
-(if (and (listp code) (eq (first code) 'progn))
-(flatten (mapcar #'unprogn (cdr code)))
-(list code)))
+  (if (and (listp code) (eq (first code) 'progn))
+      (flatten (mapcar #'unprogn (cdr code)))
+      (list code)))
 
 (defun c-preexpand (code)
-"Recursively pre-expand and unprogn some specific macros so we can
-analyze the resulting code.  "
-(let ((to-expand '(c-if)))
-(flatten
-(loop for stmt in code
-collect (if (and (listp stmt) (member (first stmt) to-expand))
-            (unprogn (macroexpand-1 stmt))
-            (list stmt))))))
+  "Recursively pre-expand and unprogn some specific macros so we can
+   analyze the resulting code.  "
+  (let ((to-expand '(c-if)))
+    (flatten
+     (loop for stmt in code
+        collect (if (and (listp stmt) (member (first stmt) to-expand))
+                    (unprogn (macroexpand-1 stmt))
+                    (list stmt))))))
 
 (defmacro with-scope (name &body body)
-`(let ((*scopes* (cons (new-scope ,name) *scopes*)))
-,@body
-(values)))
+  `(let ((*scopes* (cons (new-scope ,name) *scopes*)))
+     ,@body
+     (values)))
 
 (defmacro 16-bit-mode () `(asm rep :immediate #x30))
 (defmacro 8-bit-mode () `(asm sep :immediate #x30))
