@@ -8,7 +8,10 @@ loading this file.  Otherwise we simply run the c-compiler as script.
 "
 
 (defvar *script?* t)
-(require :cs400-compiler)
+
+(let ((*standard-output* *error-output*))
+ (require :cs400-compiler))
+
 (in-package :cs400-compiler)
 
 (defun repl ()

@@ -56,8 +56,8 @@
                    (t `(progn
                          (asm clc :implied)
                          (asm lda :immediate ,(second expr))
-                         ,@(loop for x in (cddr expr)
-                                 collect `(asm adc :immediate ,x)))))))))
+                         ,@(iter (for x in (cddr expr))
+                                 (collect `(asm adc :immediate ,x))))))))))
 
 
 (defvar *stack-space* nil) ;; Alist of stack-offset addresses
@@ -113,11 +113,11 @@
                 (eq (first expr) 'c-var)
                 (symbolp (second expr))
                 (symbolp (third expr)))))
-    (loop for expr in code
-          until (not (or (stringp expr)
-                         (is-var? expr)))
-          unless (stringp expr) ;; Ignore Docstrings
-  collect (cons (second expr) (third expr)))))
+    (iter (for expr in code)
+          (until (not (or (stringp expr)
+                          (is-var? expr))))
+          (unless (stringp expr) ;; Ignore Docstrings
+            (collect (cons (second expr) (third expr)))))))
 
 (defun grab-labels (code)
   "Returns all label names in the code block.  "
@@ -146,13 +146,13 @@
 
 (defun c-preexpand (code)
   "Recursively pre-expand and unprogn some specific macros so we can
-   analyze the resulting code.  "
+analyze the resulting code.  "
   (let ((to-expand '(c-if)))
     (flatten
-     (loop for stmt in code
-        collect (if (and (listp stmt) (member (first stmt) to-expand))
-                    (unprogn (macroexpand-1 stmt))
-                    (list stmt))))))
+     (iter (for stmt in code)
+      (collect (if (and (listp stmt) (member (first stmt) to-expand))
+                (unprogn (macroexpand-1 stmt))
+                (list stmt)))))))
 
 (defmacro with-scope (name &body body)
   `(let ((*scopes* (cons (new-scope ,name) *scopes*)))
@@ -171,11 +171,11 @@
          (c-vars (grab-vars code))
          (unique-name (gensym (symbol-name name)))
          (local-stack-size 0)
-         (variable-spaces (loop for (name . type) in c-vars
-                                collect
-                               (cons name
-                                     (prog1 (1+ local-stack-size)
-                                       (incf local-stack-size 2))))))
+         (variable-spaces (iter (for (name . type) in c-vars)
+                                (collect
+                                  (cons name
+                                    (prog1 (1+ local-stack-size)
+                                           (incf local-stack-size 2)))))))
     (format *error-output* "~%~a ~a~%" c-vars variable-spaces)
     `(let ((*labels* (make-hash-table))
            (*stack-space* ',variable-spaces))
@@ -190,16 +190,16 @@
          (asm xce :implied)
          (16-bit-mode)
          ,@(when (plusp local-stack-size)
-             `((asm tsc :implied)
-               (asm clc :implied)
-               (asm adc :immediate-w ,local-stack-size)
-               (asm tcs :implied)))
+                 `((asm tsc :implied)
+                   (asm clc :implied)
+                   (asm adc :immediate-w ,local-stack-size)
+                   (asm tcs :implied)))
          ,@code
          ,@(when (plusp local-stack-size)
-             `((asm tsc :implied)
-               (asm sec :implied)
-               (asm sbc :immediate-w ,local-stack-size)
-               (asm tcs :implied)))
+                 `((asm tsc :implied)
+                   (asm sec :implied)
+                   (asm sbc :immediate-w ,local-stack-size)
+                   (asm tcs :implied)))
          (asm rts :implied)))))
 
 (defmacro c-if (test then else)
