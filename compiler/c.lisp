@@ -146,7 +146,7 @@
 
 (defun c-preexpand (code)
   "Recursively pre-expand and unprogn some specific macros so we can
-analyze the resulting code.  "
+   analyze the resulting code.  "
   (let ((to-expand '(c-if)))
     (flatten
      (iter (for stmt in code)
@@ -202,7 +202,7 @@ analyze the resulting code.  "
                    (asm tcs :implied)))
          (asm rts :implied)))))
 
-(defmacro c-if (test then else)
+(defmacro c-if (test then &optional else)
   (let ((else-label (gensym "ELSE"))
         (end-label (gensym "END")))
     `(progn
@@ -214,4 +214,15 @@ analyze the resulting code.  "
        (c-goto ,end-label)
        (c-label ,else-label)
        ,else
+       (c-label ,end-label))))
+
+(defmacro c-while (test body)
+  (let ((repeat-label (gensym "loop"))
+        (end-label (gensym "break")))
+    `(progn
+       (unless (in-function?)
+         (error "All code must be inside a function.  "))
+       (c-label ,repeat-label)
+       (c-if ,test ,body (c-goto ,end-label))
+       (c-goto ,repeat-label)
        (c-label ,end-label))))
