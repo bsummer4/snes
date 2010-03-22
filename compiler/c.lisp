@@ -208,6 +208,10 @@
   (or (cdr (assoc key alist))
       (error "key '~a was not found in alist '~a.  " key alist)))
 
+(defmacro c-stack-variable-set (name)
+  `(asm sta :stack-indexed (or (cdr (assoc ',name *stack-space*))
+                               (error "Undefined identifier ~a" ',name))))
+
 (defmacro c-stack-variable-reference (name)
   `(asm lda :stack-indexed (or (cdr (assoc ',name *stack-space*))
                                (error "Undefined identifier ~a" ',name))))

@@ -11,8 +11,12 @@
 (c-fn main ()
   (c-var x :int)
   (c-var y :int)
+
+  (16-bit-mode)
+
+  (asm lda :immediate-w #x0001)
+  (c-stack-variable-set x)
   (c-stack-variable-reference y)
-  (c-stack-variable-reference x)
 
   "Set up some memory to cycle colors.  "
   (16-bit-mode)
@@ -27,9 +31,14 @@
   (asm sta :absolute #x2121)
 
   (16-bit-mode)
-  (c-while (asm lda :immediate-w #x0001)
+  (c-while (c-stack-variable-reference x)
     "Calculate the color to display"
     (16-bit-mode)
+
+    (c-stack-variable-reference x)
+    (asm inc :accumulator)
+    (c-stack-variable-set x)
+
     (c-if (asm lda :absolute #x00F2) ;; if _ then trippy else black
           (progn
             (asm lda :immediate-w #x0000)
