@@ -50,8 +50,7 @@
           'string))
 
 (defmacro asm (command mode &rest args)
-  `(emit ,(format nil "~a ~a"
-                  (symbol-name command)
-                  (apply #'asm-format
-                         (lookup +addressing-modes-and-syntax+ mode)
-                         args))))
+  `(emit (format nil "~a ~a"
+                 ,(symbol-name command)
+                 (asm-format ,(lookup +addressing-modes-and-syntax+ mode)
+                             ,@args))))

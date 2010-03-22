@@ -202,6 +202,16 @@
                    (asm tcs :implied)))
          (asm rts :implied)))))
 
+;; TODO get rid of the real LOOKUP function which doesn't do the right
+;; thing.
+(defun -lookup (key alist)
+  (or (cdr (assoc key alist))
+      (error "key '~a was not found in alist '~a.  " key alist)))
+
+(defmacro c-stack-variable-reference (name)
+  `(asm lda :stack-indexed (or (cdr (assoc ',name *stack-space*))
+                               (error "Undefined identifier ~a" ',name))))
+
 (defmacro c-if (test then &optional else)
   (let ((else-label (gensym "ELSE"))
         (end-label (gensym "END")))

@@ -11,6 +11,8 @@
 (c-fn main ()
   (c-var x :int)
   (c-var y :int)
+  (c-stack-variable-reference y)
+  (c-stack-variable-reference x)
 
   "Set up some memory to cycle colors.  "
   (16-bit-mode)
