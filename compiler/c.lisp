@@ -147,11 +147,11 @@
 (defun c-preexpand (code)
   "Recursively pre-expand and unprogn some specific macros so we can
    analyze the resulting code.  "
-  (let ((to-expand '(c-if)))
+  (let ((to-expand '(c-if c-while)))
     (flatten
      (iter (for stmt in code)
       (collect (if (and (listp stmt) (member (first stmt) to-expand))
-                (unprogn (macroexpand-1 stmt))
+                (c-preexpand (unprogn (macroexpand-1 stmt)))
                 (list stmt)))))))
 
 (defmacro with-scope (name &body body)
@@ -216,13 +216,15 @@
        ,else
        (c-label ,end-label))))
 
-(defmacro c-while (test body)
+(defmacro c-while (test &body body)
   (let ((repeat-label (gensym "loop"))
         (end-label (gensym "break")))
     `(progn
        (unless (in-function?)
          (error "All code must be inside a function.  "))
        (c-label ,repeat-label)
-       (c-if ,test ,body (c-goto ,end-label))
+       (c-if ,test (progn
+                     ,@body)
+             (c-goto ,end-label))
        (c-goto ,repeat-label)
        (c-label ,end-label))))
