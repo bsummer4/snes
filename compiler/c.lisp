@@ -223,10 +223,12 @@
        (unless (in-function?)
          (error "All code must be inside a function.  "))
        ,test
-       (emit (format nil "BEQ {~a}" (gethash ',else-label *labels*)))
+       (emit (format nil "BEQ {~a}"
+                     (gethash (quote ,(if else else-label end-label))
+                              *labels*)))
        ,then
-       (c-goto ,end-label)
-       (c-label ,else-label)
+       ,(when else `(c-goto ,end-label))
+       ,(when else `(c-label ,else-label))
        ,else
        (c-label ,end-label))))
 
