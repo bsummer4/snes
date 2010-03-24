@@ -192,13 +192,13 @@
          ,@(when (plusp local-stack-size)
                  `((asm tsc :implied)
                    (asm clc :implied)
-                   (asm adc :immediate-w ,local-stack-size)
+                   (asm sbc :immediate-w ,local-stack-size)
                    (asm tcs :implied)))
          ,@code
          ,@(when (plusp local-stack-size)
                  `((asm tsc :implied)
                    (asm sec :implied)
-                   (asm sbc :immediate-w ,local-stack-size)
+                   (asm adc :immediate-w ,local-stack-size)
                    (asm tcs :implied)))
          (asm rts :implied)))))
 
