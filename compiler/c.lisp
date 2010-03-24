@@ -237,17 +237,13 @@
        (unless (in-function?)
          (error "All code must be inside a function.  "))
        (c-label ,repeat-label)
-       (c-if ,test (progn
-                     ,@body)
-             (c-goto ,end-label))
-       (c-goto ,repeat-label)
-       (c-label ,end-label))))
+       (c-if ,test (progn ,@body (c-goto ,repeat-label))))))
 
-(defmacro c-do-while (&body body test)
+(defmacro c-do-while (test &body body)
   (let ((repeat-label (gensym "loop")))
     `(progn
        (unless (in-function?)
          (error "All code must be inside a function.  "))
        (c-label ,repeat-label)
-       (progn ,@body)
-       (c-if ,test (c-goto ,repeat-label) ()))))
+       ,@body
+       (c-if ,test (c-goto ,repeat-label)))))
