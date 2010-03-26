@@ -42,25 +42,9 @@
       *next-available-global-space*
       (incf *next-available-global-space* size)))
 
-
-"## Compiler Macros.  "
-
-(defmacro compile-c (expr)
-  "We support numbers and addition.  "
-  (etypecase expr
-    (number `(asm lda :immediate ,expr))
-    (list (progn (assert (eq '+ (first expr)))
-                 (case (length expr)
-                   (1 nil)
-                   (2 `(compile-c ,(second expr)))
-                   (t `(progn
-                         (asm clc :implied)
-                         (asm lda :immediate ,(second expr))
-                         ,@(iter (for x in (cddr expr))
-                                 (collect `(asm adc :immediate ,x))))))))))
-
-
-(defvar *stack-space* nil) ;; Alist of stack-offset addresses
+(defvar *stack-space* :undefined-stack-space
+  "Alist of stack-offset addresses")
+(defvar *breakpoint* :undefined-label)
 
 (defun stack-allocate (name)
   (or (cdr (assoc name *stack-space*))
@@ -96,12 +80,15 @@
   (unless (symbolp name) (insult))
   `(emit (format nil "{~a}" (gethash ',name *labels*))))
 
+(defun %c-goto (value)
+  (emit (format nil "BRA {~a}" value)))
+
 (defmacro c-goto (name)
   (unless (symbolp name) (insult))
   (let ((tmp (gensym)))
     `(let ((,tmp (gethash ',name *labels*)))
        (if ,tmp
-           (emit (format nil "BRA {~a}" ,tmp))
+           (%c-goto ,tmp)
            (error "Trying to goto a non-existent label: ~a" ',name)))))
 
 (defun grab-vars (code)
@@ -116,7 +103,8 @@
     (iter (for expr in code)
           (until (not (or (stringp expr)
                           (is-var? expr))))
-          (unless (stringp expr) ;; Ignore Docstrings
+          (unless (stringp expr) ;; Ignore Docstrings in c-function
+                                 ;; definitions
             (collect (cons (second expr) (third expr)))))))
 
 (defun grab-labels (code)
@@ -126,20 +114,24 @@
                 (= 2 (length expr))
                 (eq (first expr) 'c-label)
                 (symbolp (second expr)))))
+    ;; TODO This should see through LET statements; Maybe iterate
+    ;; through code as a tree instead of as a list?
     (mapcar #'second (filter #'is-label? code))))
 
 (defun scan-labels (code)
   "Return an alist mapping labels in code to their new globally-unique
-   names. "
+   names.  "
   (let ((labels (grab-labels code)))
     (aif (non-unique-items labels)
          (error
           "The following labels appear more than once in the same scope: ~a"
           it))
-    (mapcar (lambda (label) (cons label (gensym (symbol-name label))))
+    (mapcar (lambda (label) (cons label (nice-gensym label)))
             labels)))
 
 (defun unprogn (code)
+  "We return a list of statements in CODE.  If CODE is of the
+  form (PROGN &rest code), we return (code).  "
   (if (and (listp code) (eq (first code) 'progn))
       (flatten (mapcar #'unprogn (cdr code)))
       (list code)))
@@ -147,12 +139,22 @@
 (defun c-preexpand (code)
   "Recursively pre-expand and unprogn some specific macros so we can
    analyze the resulting code.  "
-  (let ((to-expand '(c-if c-while)))
+  (let ((to-expand '(c-if c-while c-for c-do-while c-switch)))
     (flatten
      (iter (for stmt in code)
-      (collect (if (and (listp stmt) (member (first stmt) to-expand))
-                (c-preexpand (unprogn (macroexpand-1 stmt)))
-                (list stmt)))))))
+           (collect
+               (if (not (listp stmt))
+                   (list stmt)
+                   (cond
+                     ((eq 'let (first stmt))
+                      `((let ,(second stmt)
+                         ,@(c-preexpand
+                            (prog1 (cddr stmt)
+                              (format t "~%--~s~%" (cddr stmt)))))))
+                     ((member (first stmt) to-expand)
+                      (c-preexpand
+                       (unprogn (macroexpand-1 stmt))))
+                     (t (list stmt)))))))))
 
 (defmacro with-scope (name &body body)
   `(let ((*scopes* (cons (new-scope ,name) *scopes*)))
@@ -169,7 +171,7 @@
          (code (c-preexpand code))
          (c-labels (scan-labels code))
          (c-vars (grab-vars code))
-         (unique-name (gensym (symbol-name name)))
+         (unique-name (nice-gensym name))
          (local-stack-size 0)
          (variable-spaces (iter (for (name . type) in c-vars)
                                 (collect
@@ -216,6 +218,11 @@
   `(asm lda :stack-indexed (or (cdr (assoc ',name *stack-space*))
                                (error "Undefined identifier ~a" ',name))))
 
+(defun nice-gensym (obj)
+  (gensym (string-right-trim
+           "0123456789"
+           (format nil "~a" obj))))
+
 (defmacro c-if (test then &optional else)
   (let ((else-label (gensym "ELSE"))
         (end-label (gensym "END")))
@@ -233,8 +240,11 @@
        (c-label ,end-label))))
 
 (defmacro c-while (test &body body)
-  (let ((repeat-label (gensym "loop"))
-        (end-label (gensym "break")))
+  (let ((repeat-label (gensym "LOOP"))
+        (end-label (gensym "BREAK")))
+    ;; TODO bind *breakpoint* to end-label (right now binding
+    ;;      *breakpoint* breaks shit)
+    (declare (ignore end-label))
     `(progn
        (unless (in-function?)
          (error "All code must be inside a function.  "))
@@ -242,7 +252,7 @@
        (c-if ,test (progn ,@body (c-goto ,repeat-label))))))
 
 (defmacro c-do-while (test &body body)
-  (let ((repeat-label (gensym "loop")))
+  (let ((repeat-label (gensym "LOOP")))
     `(progn
        (unless (in-function?)
          (error "All code must be inside a function.  "))
@@ -255,3 +265,89 @@
      ,setup
      (while ,test
        ,@body ,iterate)))
+
+#|
+switch (getnum()) {
+ case 3: return 3;
+ case 4: break;
+ default: exit(1); }
+return 4;
+|#
+
+; JSR getnum                expr
+; CMP #3w                   jumps
+; BEQ case_3
+; CMP #4w
+; BEQ case_4
+; BRA default
+; {case_3}                  targes
+; LDA #3w
+; RTS
+; {case_4}
+; BRA break
+; {default}
+; JSR exit
+; {break}
+; LDA #4w
+; RTS
+
+(defun switch-case-values (cases) (mapcar #'first cases))
+(defun switch-case-codes (cases) (mapcar #'second cases))
+(defun switch-label (value)
+  (etypecase value
+    (number (gensym (format nil "CASE_~a_" value)))
+    (symbol (progn
+              (or (eq value 'default)
+                  (error "case ~a is not a number" value))
+              (nice-gensym value)))))
+
+(defun make-switch-jump-entry (value target)
+  (if (eq value 'default)
+      `(c-goto ,target)
+      `(progn
+         (asm cmp :immediate-w ,value)
+         (emit (format nil "BEQ {~a}" ',target)))))
+
+(defun make-switch-target (target code)
+  `(progn (c-label ,target) ,code))
+
+(defun partition (predicate list)
+  "Returns (values (remove-if-not predicate list)
+                   (remove-if predicate list)), but in a single
+   pass. "
+  (iter (for item in list)
+        (if (funcall predicate item)
+            (collect item into good-list)
+            (collect item into bad-list))
+        (finally (return (values good-list bad-list)))))
+
+(defun switch-default-hack (jumps break-label)
+  "The 'default' case must be 'goto'ed at the end of jump clauses, but
+   it doesn't need to be at the end of the switch.  So, we look for
+   the generated default clause (which like '(goto DEFAULT####)') and
+   moves it to the end.  "
+  (print jumps)
+  (multiple-value-bind (defaults numbers)
+      (partition (lambda (jump-form)
+                   (eq 'c-goto (first jump-form)))
+                 jumps)
+    (append numbers (or defaults
+                        `((c-goto ,break-label))))))
+
+(defmacro c-break () '(%c-goto *breakpoint*))
+
+(defmacro c-switch (expr &body cases)
+  ;; TODO This is broken like your mom!!
+  (let* ((values (switch-case-values cases))
+         (codes (switch-case-codes cases))
+         (labels (mapcar #'switch-label values))
+         (break-label (gensym "BREAK")))
+    `(let ((*breakpoint* ',break-label))
+       (unless (in-function?)
+         (error "All code must be inside a function.  "))
+       ,expr
+       ,@(switch-default-hack
+          (mapcar #'make-switch-jump-entry values labels)
+          break-label)
+       ,@(mapcar #'make-switch-target labels codes)
+       (c-label ,break-label))))
