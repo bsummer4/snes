@@ -249,3 +249,9 @@
        (c-label ,repeat-label)
        ,@body
        (c-if ,test (c-goto ,repeat-label)))))
+
+(defmacro c-for ((setup test iterate) &body body)
+  `(progn
+     ,setup
+     (while ,test
+       ,@body ,iterate)))
