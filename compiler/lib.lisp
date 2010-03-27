@@ -52,3 +52,25 @@
 
 (defmethod print-object ((table hash-table) stream)
   (format stream "[dict~{ ~s~}]" (hash-table->plist table)))
+
+
+;; Junk
+(defmacro with-gensyms (symbols &body code)
+  `(let ,(mapcar (lambda (symbol)
+                   `(,symbol (gensym (symbol-name ',symbol))))
+                 symbols)
+     ,@code))
+
+(defmacro match (expr &body forms) `(cl-match:match ,expr ,@forms))
+(defmacro ematch (expr &body forms)
+  (with-gensyms (tmp)
+    `(let ((,tmp ,expr))
+       (or (match ,tmp ,@forms)
+           (error "no match found for ~a in patterns ~a" ,tmp
+                  ',(mapcar #'first forms))))))
+
+(defun & (f &rest l) (apply f l))
+(defmacro fn (lambda-list &body body) `(lambda ,lambda-list ,@body))
+(defmacro fn1 (&body body) `(fn (!1) ,@body))
+
+(defun eprint (object) (print object *error-output*))

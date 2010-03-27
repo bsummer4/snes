@@ -107,16 +107,34 @@
                                  ;; definitions
             (collect (cons (second expr) (third expr)))))))
 
+(defun %code-walk (function code)
+  "Like (funcall function code) except we skip over some know
+   special-forms:
+    (LET IF PROGN) and recurse on their bodies.  "
+  (flet ((recur (code) (%code-walk function code)))
+    (match code
+      ((list* 'let forms body) `(let ,forms ,@(mapcar #'recur body)))
+      ((list 'if expr then) `(if ,expr ,(recur then)))
+      ((list 'if expr then else)
+       `(if ,expr ,(recur then) ,(recur else)))
+      ((list* 'progn body) `(progn ,@(mapcar #'recur body)))
+      ((as form *) (& function form)))))
+
 (defun grab-labels (code)
   "Returns all label names in the code block.  "
-  (flet ((is-label? (expr)
-           (and (listp expr)
-                (= 2 (length expr))
-                (eq (first expr) 'c-label)
-                (symbolp (second expr)))))
-    ;; TODO This should see through LET statements; Maybe iterate
-    ;; through code as a tree instead of as a list?
-    (mapcar #'second (filter #'is-label? code))))
+  (let ((result))
+    (labels ((is-label? (expr)
+               (and (listp expr)
+                    (= 2 (length expr))
+                    (eq (first expr) 'c-label)
+                    (symbolp (second expr))))
+             (maybe-collect (x)
+               (if (is-label? x) (push x result))))
+      ;; TODO This should see through LET statements; Maybe iterate
+      ;; through code as a tree instead of as a list?
+      (mapc (fn1 (%code-walk #'maybe-collect !1)) code))
+    ;;(mapcar #'second (filter #'is-label? code)))
+    (mapcar #'second result)))
 
 (defun scan-labels (code)
   "Return an alist mapping labels in code to their new globally-unique
@@ -139,7 +157,7 @@
 (defun c-preexpand (code)
   "Recursively pre-expand and unprogn some specific macros so we can
    analyze the resulting code.  "
-  (let ((to-expand '(c-if c-while c-for c-do-while c-switch)))
+  (let ((to-expand '(c-if c-while c-for c-do-while c-switch unless)))
     (flatten
      (iter (for stmt in code)
            (collect
@@ -148,9 +166,7 @@
                    (cond
                      ((eq 'let (first stmt))
                       `((let ,(second stmt)
-                         ,@(c-preexpand
-                            (prog1 (cddr stmt)
-                              (format t "~%--~s~%" (cddr stmt)))))))
+                         ,@(c-preexpand (cddr stmt)))))
                      ((member (first stmt) to-expand)
                       (c-preexpand
                        (unprogn (macroexpand-1 stmt))))
@@ -242,14 +258,12 @@
 (defmacro c-while (test &body body)
   (let ((repeat-label (gensym "LOOP"))
         (end-label (gensym "BREAK")))
-    ;; TODO bind *breakpoint* to end-label (right now binding
-    ;;      *breakpoint* breaks shit)
-    (declare (ignore end-label))
-    `(progn
+    `(progn ;let ((*breakpoint* ',end-label))
        (unless (in-function?)
          (error "All code must be inside a function.  "))
        (c-label ,repeat-label)
-       (c-if ,test (progn ,@body (c-goto ,repeat-label))))))
+       (c-if ,test (progn ,@body (c-goto ,repeat-label)))
+       (c-label ,end-label))))
 
 (defmacro c-do-while (test &body body)
   (let ((repeat-label (gensym "LOOP")))
@@ -326,7 +340,6 @@ return 4;
    it doesn't need to be at the end of the switch.  So, we look for
    the generated default clause (which like '(goto DEFAULT####)') and
    moves it to the end.  "
-  (print jumps)
   (multiple-value-bind (defaults numbers)
       (partition (lambda (jump-form)
                    (eq 'c-goto (first jump-form)))
