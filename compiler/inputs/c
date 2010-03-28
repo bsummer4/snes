@@ -1,7 +1,7 @@
 (c::var fuck-space :int)
 (c::var more-fuck-space :int)
 
-(c::proc main ()
+(c::proc c::main ()
   (c::var c::x c::int)
   (c::var c::y c::int)
   (16-bit-mode)

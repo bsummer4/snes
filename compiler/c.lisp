@@ -235,7 +235,7 @@ using CL:MACROLET and CL:FLET.
    and gotos.  'NAME will **not** be mangled, so make sure it's what
    you want.  "
 
-  `(with-indent ,(format nil "_subrountine_~s" name)
+  `(with-indent ,(format nil "_subrountine_~s" (intern (symbol-name name)))
      (labels-block
        (bind-identifier ',name (list ',name :scope *scopes* :code ',code))
        (asm-code ',name)
@@ -328,7 +328,8 @@ using CL:MACROLET and CL:FLET.
          (unique-name (c-fn-unique-name name))
          (code (transform-c-syntax (preexpand input-code)))
          (vars (find-vars code)))
-    `(with-indent ,(format nil "_function_~s" name)
+    `(with-indent ,(format nil "_function_~s"
+                           (intern (symbol-name name)))
          (with-scope ',name
        (asm-code ',unique-name)
        (with-stack-variables ,vars
