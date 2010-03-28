@@ -48,7 +48,7 @@ using CL:MACROLET and CL:FLET.
                         (declare (type symbol label))
                         `(%goto (lookup-label ',label)))
                       (c::label (name)
-                        (declare (type symbol name))
+
                         `(%label (lookup-label ',name))))
              ,code))))))
 
@@ -90,6 +90,13 @@ using CL:MACROLET and CL:FLET.
                     (c::goto ,top)))
            (c::label ,end))))))
 
+(defmacro c::for ((setup test iterate) &body body)
+  `(with-indent _for
+     ,setup
+     (c::while ,test
+       ,@body
+       ,iterate)))
+
 (defmacro c::do-while (test &body body)
   (with-gensyms ((top "dowhile_label_repeat")
                  (end "dowhile_label_end"))
@@ -101,14 +108,6 @@ using CL:MACROLET and CL:FLET.
              ,@body)
            (c::if ,test (c::goto ,top))
            (c::label ,end))))))
-
-(defmacro c::for ((setup test iterate) &body body)
-  `(with-indent _for
-     ,setup
-     (c::while ,test
-       ,@body ,iterate)))
-
-
 
 "### Switch"
 (eval-when (:compile-toplevel :load-toplevel :execute)
