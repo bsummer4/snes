@@ -6,7 +6,8 @@ need to export symbols and stuff here.
 
 (defpackage #:cs400-compiler
   (:use #:cl #:iterate #:cl-match #:split-sequence)
-  (:shadow #:match))
+  (:shadow #:match)
+  (:nicknames #:s))
 
 (defpackage :c)
 

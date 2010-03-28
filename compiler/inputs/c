@@ -2,13 +2,13 @@
 (c::var more-fuck-space :int)
 
 (c::proc main ()
-  (c::var x int)
-  (c::var y int)
+  (c::var c::x c::int)
+  (c::var c::y c::int)
   (16-bit-mode)
 
   (lda 1)
-  (c::set x)
-  (c::ref y)
+  (c::set c::x)
+  c::y
 
   "Set up some memory to cycle colors.  "
   (16-bit-mode)
@@ -23,13 +23,13 @@
   (asm sta :absolute #x2121)
 
   (16-bit-mode)
-  (c::while (c::ref x)
+  (c::while c::x
     "Calculate the color to display"
     (16-bit-mode)
 
-    (c::ref x)
+    c::x
     (asm inc :accumulator)
-    (c::set x)
+    (c::set c::x)
 
     (c::if (asm lda :absolute #x00F2) ;; if _ then trippy else black
           (progn

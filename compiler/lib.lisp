@@ -62,7 +62,8 @@
       (if found? result
           (error "key '~a was not found in alist '~a.  " key alist))))
 
-(defmacro match (expr &body forms) `(cl-match:match ,expr ,@forms))
+(defmacro match (expr &body forms)
+  `(cl-match:match ,expr ,@forms))
 
 (defmacro match? (form value)
   `(match ,value (,form t)))

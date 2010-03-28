@@ -1,79 +1,20 @@
 (in-package #:cs400-compiler)
 
+"## Scratch Space"
+(defmacro c::funcall (function &rest args)
+  ;; TODO THis is just for testing; it doesn't do anything.
+  (format *error-output* "~%funcall: ~a(~{~a~^, ~})~%~%" function args)
+  `(lda #x0FAC))
+
+(defmacro c::set (var)
+  (declare (ignore var))
+  (error "Code outside of a function!"))
+
+(defmacro c::ref (var)
+  (declare (ignore var))
+  (error "Code outside of a function!"))
 
 
-"
-## Code Analitics
-
-This has a bunch of functions for scanning a code body looking for
-certain forms.  We need to be able to, for example, find all the
-labels or variable declarations in a function body.
-"
-
-
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (macrolet ((dh (n fs &body code)
-               `(macroexpand-dammit::defhandler ,n ,fs ,@code)))
-    "We tell macroexpand-dammit not to expand c::label c::goto or c::var,
-   since we need to scan code-bodies for these.  "
-    (dh c::label (label name) `(list ',label ',name))
-    (dh c::goto (goto name) `(list ',goto ',name))
-    (dh c::var (var name type &optional default-value)
-        (if default-value
-            `(list ',var ',name ',type ',default-value)
-            `(list ',var ',name ',type))))
-
-  (defun preexpand (expr)
-    (macroexpand-dammit:macroexpand-dammit expr))
-
-  (defun code-walk (function code)
-    "Like calls FUNCTION on any non-special-from code fragments.
-   Currently only these special forms are recognized:
-    (LET FLET MACROLET IF PROGN)"
-    ;; TODO Support all special forms
-    (flet ((recur (code) (code-walk function code) (values)))
-      (match code
-        ((list* 'let forms body4) (mapc #'recur body4))
-        ((list* 'flet forms body3) (mapc #'recur body3))
-        ((list* 'macrolet forms body2) (mapc #'recur body2))
-        ((list 'if expr then) (recur then))
-        ((list 'if expr then else) (recur then) (recur else))
-        ((list* 'progn body1) (mapc #'recur body1))
-        ((as form *) (& function form))))
-    (values))
-
-  (defun find-forms (predicate code)
-    (collecting
-      (code-walk (fn1 (if (& predicate !1)
-                           (collect !1)))
-                  code)))
-
-  (defun label-form? (expr) (match? (list 'c::label symbol) expr))
-  (defun var-form? (expr)
-    (match expr
-      ((list 'c::var (type symbol) (type symbol)) t)
-      ((list 'c::var (type symbol) (type symbol) (type number)) t)))
-
-  (defun find-labels (code)
-    "Returns all label names in the code block.  If a label is multiply
-   defined, an error is signaled.  "
-    (let ((labels (mapcar #'second
-                          (find-forms #'label-form? code))))
-      (aif (non-unique-items labels)
-           (error
-            "The following labels appear more than once in the same scope: ~a"
-            it)
-           labels)))
-
-  (defun find-vars (code)
-    (let* ((var-forms (find-forms #'var-form? code))
-           (var-names (mapcar #'second var-forms))
-           (var-types (mapcar #'third var-forms)))
-      (aif (non-unique-items var-names)
-           (error
-            "The following variables are declared more than once in the
-           same scope: ~a" it)
-           (mapcar #'cons var-names var-types)))))
 
 "## Labels, Gotos, Break, and Continue.  "
 
@@ -95,11 +36,14 @@ using CL:MACROLET and CL:FLET.
 (defmacro labels-block (&body code)
   "Binds the macros c::goto and c::label to generate branches and asm
    labels.  "
-  (let ((code (preexpand `(progn ,@code))))
+  (let ((code (transform-c-syntax
+               (preexpand `(progn ,@code)))))
     (with-gensyms (labels)
       `(with-symbol-alias-alist ,labels ,(find-labels code)
-         (flet ((lookup-label (label) (or (lookup label ,labels)
-                                          (error "Undefined label ~a" label))))
+         (flet ((lookup-label (label)
+                  (or (lookup label ,labels)
+                      (error "Undefined label ~a" label))))
+           (declare (ignorable #'lookup-label))
            (macrolet ((c::goto (label)
                         (declare (type symbol label))
                         `(%goto (lookup-label ',label)))
@@ -290,11 +234,13 @@ using CL:MACROLET and CL:FLET.
    variables, etc.  The only really supported constructs are labels
    and gotos.  'NAME will **not** be mangled, so make sure it's what
    you want.  "
-  `(labels-block
-     (bind-identifier ',name (list ',name :scope *scopes* :code ',code))
-     (asm-code ',name)
-     ,@code
-     (asm rts :implied)))
+
+  `(with-indent ,(format nil "_subrountine_~s" name)
+     (labels-block
+       (bind-identifier ',name (list ',name :scope *scopes* :code ',code))
+       (asm-code ',name)
+       ,@code
+       (asm rts :implied))))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun c-fn-unique-name (symbol)
@@ -380,15 +326,16 @@ using CL:MACROLET and CL:FLET.
   (when args (error "Function arguments are not supported.  "))
   (let* ((input-code `(progn ,@code))
          (unique-name (c-fn-unique-name name))
-         (code (preexpand input-code))
+         (code (transform-c-syntax (preexpand input-code)))
          (vars (find-vars code)))
-    `(with-scope ',name
+    `(with-indent ,(format nil "_function_~s" name)
+         (with-scope ',name
        (asm-code ',unique-name)
        (with-stack-variables ,vars
          (labels-block
            (bind-identifier ',name (list ',name :scope *scopes* :code ',code))
            ,code))
-       (asm rts :implied))))
+       (asm rts :implied)))))
 
 
 "## Testing"
@@ -398,27 +345,35 @@ using CL:MACROLET and CL:FLET.
        until (eq x eof) do (eval x)
        do (force-output))))
 
-(defun interactive-compiler-test (file)
-  (compiler-reset)
-  (with-open-file (*standard-input* file)
-    (repl)))
-
 (defun compiler-reset ()
   "For convience at the lisp repl; Clears out the global scope
    effectively destroying everything the compiler has definied.  "
   (clrhash (scope-identifiers *global-scope*))
   (clrhash (scope-tags *global-scope*)))
 
+(defun interactive-compiler-test (file)
+  (compiler-reset)
+  (with-open-file (*standard-input* file)
+    (repl)))
 
-"## Compiler Defined Code"
-(c::proto main)
-
-(c::subroutine reset
-  (asm clc :implied)
-  (asm xce :implied)
-  (16-bit-mode)
-  (asm jsr :immediate 'main))
-
-(set-reset-handler "$8000")
-
-(emit "#LoROM")
+#|
+(c::proc c::main ()
+  (c::var c::x c::int 1)
+  (c::var c::y c::int 2)
+  c::x
+  (c::set c::y)
+  (c::while c::x (lda 0) (c::set c::x))
+  (c::f c::x)
+  (c::while c::y
+    (c::switch c::x
+      (3 (c::block (lda 1)
+           (c::set c::x)))
+      (4) (5) (6) (7) (8) (9 (c::block
+                                 (lda 0)
+                               (c::set c::x)))
+      (default (c::block
+                   (lda 1) (c::set c::y)
+                   (c::break)))
+      (10 (c::continue))))
+  c::y)
+  |#
