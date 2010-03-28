@@ -5,7 +5,7 @@
 (defun insult () (error "u is dumb"))
 (defun traceme (x) x)
 (defun flatten (lists) (apply #'append lists))
-(defun lookup (dict key) (second (assoc key dict)))
+
 (defun filter (predicate seq) (remove-if-not predicate seq))
 (defun in-table? (key table)
   (multiple-value-bind (value found?) (gethash key table)
@@ -53,15 +53,30 @@
 (defmethod print-object ((table hash-table) stream)
   (format stream "[dict~{ ~s~}]" (hash-table->plist table)))
 
+(defun lookup (key alist)
+  (aif (assoc key alist)
+       (values (cdr it) t)))
 
-;; Junk
+(defun elookup (key alist)
+  (multiple-value-bind (result found?) (lookup key alist)
+      (if found? result
+          (error "key '~a was not found in alist '~a.  " key alist))))
+
+(defmacro match (expr &body forms) `(cl-match:match ,expr ,@forms))
+
+(defmacro match? (form value)
+  `(match ,value (,form t)))
+
 (defmacro with-gensyms (symbols &body code)
-  `(let ,(mapcar (lambda (symbol)
-                   `(,symbol (gensym (symbol-name ',symbol))))
+  `(let ,(mapcar (lambda (form)
+                   (match form
+                     ((as symbol (type symbol))
+                      `(,symbol (gensym (symbol-name ',symbol))))
+                     ((list symbol gensym-hint)
+                      `(,symbol (gensym ,gensym-hint)))))
                  symbols)
      ,@code))
 
-(defmacro match (expr &body forms) `(cl-match:match ,expr ,@forms))
 (defmacro ematch (expr &body forms)
   (with-gensyms (tmp)
     `(let ((,tmp ,expr))
@@ -74,3 +89,32 @@
 (defmacro fn1 (&body body) `(fn (!1) ,@body))
 
 (defun eprint (object) (print object *error-output*))
+
+(defmacro collecting (&body code)
+  (with-gensyms (result)
+    `(let ((,result))
+       (flet ((collect (obj) (push obj ,result)))
+         ,@code)
+       (nreverse ,result))))
+
+(defun nice-gensym (obj)
+  (gensym (string-right-trim
+           "0123456789"
+           (format nil "~a" obj))))
+
+(defmacro with-symbol-alias-alist (alist-varname symbols &body code)
+  "Generates unique names for all SYMBOLS, and binds an alist
+   (GIVEN-NAME . UNIQUE-NAME) to ALIST_VARNAME.  "
+  `(let ((,alist-varname ',(mapcar (fn1 (cons !1 (nice-gensym !1)))
+                                   symbols)))
+       ,@code))
+
+(defun lpartition (predicate list)
+  "Returns (values (remove-if-not predicate list)
+                   (remove-if predicate list)), but in a single
+   pass. "
+  (iter (for item in list)
+        (if (funcall predicate item)
+            (collect item into good-list)
+            (collect item into bad-list))
+        (finally (return (values good-list bad-list)))))

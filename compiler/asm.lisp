@@ -28,7 +28,21 @@
     (:long "l")
     (:long-x-indexed "l,X")))
 
-(defun emit (string) (format t "; ~a~%" string) (values))
+(defvar *emit-indentation* 0)
+
+(defun indent-chars ()
+  (collecting
+    (dotimes (i (* 4 *emit-indentation*))
+      (collect #\space))))
+
+(defun emit (string)
+  (format t "~{~a~}; ~a~%" (indent-chars) string)
+  (values))
+
+(defmacro with-indent (name &body code)
+  `(let ((*emit-indentation* (1+ *emit-indentation*)))
+     (format t "~{~a~}~a~%" (rest (indent-chars)) ',name)
+     ,@code))
 
 (defun asm-subformat (format-char argument)
   (etypecase argument
@@ -52,5 +66,29 @@
 (defmacro asm (command mode &rest args)
   `(emit (format nil "~a ~a"
                  ,(symbol-name command)
-                 (asm-format ,(lookup +addressing-modes-and-syntax+ mode)
+                 (asm-format
+                  (car (elookup ,mode +addressing-modes-and-syntax+))
                              ,@args))))
+
+
+"# Code Generation Routines"
+(defun %label (name) (emit (format nil "{~a}" name)))
+(defun %goto (label-name) (emit (format nil "BRA {~a}" label-name)))
+(defun %branch-if-not (label-name)
+  (emit (format nil "BEQ {~a}" label-name)))
+
+(defun asm-code (symbol) (emit (format nil "#Code w ~a" symbol)))
+(defmacro 16-bit-mode () `(asm rep :immediate #x30))
+(defmacro 8-bit-mode () `(asm sep :immediate #x30))
+(defun lda (integer)
+  (declare (type integer integer))
+  (asm lda :immediate-w integer))
+
+(defmacro write-w (addr value)
+  `(progn (asm lda :immediate-w ,value)
+          (asm sta :direct ,addr)))
+
+(defun set-reset-handler (value)
+  (emit (format nil
+                "#Data $00:FFFC _reset_handler {~a $0000}"
+                value)))

@@ -1,37 +1,264 @@
-"# C Compilaiton"
-
 (in-package #:cs400-compiler)
 
-"## Data structures and special variables.  "
 
-(defstruct scope
-  "The point of giving scopes names is to help generate better error
+
+"
+## Code Analitics
+
+This has a bunch of functions for scanning a code body looking for
+certain forms.  We need to be able to, for example, find all the
+labels or variable declarations in a function body.
+"
+
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (macrolet ((dh (n fs &body code)
+               `(macroexpand-dammit::defhandler ,n ,fs ,@code)))
+    "We tell macroexpand-dammit not to expand c::label c::goto or c::var,
+   since we need to scan code-bodies for these.  "
+    (dh c::label (label name) `(list ',label ',name))
+    (dh c::goto (goto name) `(list ',goto ',name))
+    (dh c::var (var name type &optional default-value)
+        (if default-value
+            `(list ',var ',name ',type ',default-value)
+            `(list ',var ',name ',type))))
+
+  (defun preexpand (expr)
+    (macroexpand-dammit:macroexpand-dammit expr))
+
+  (defun code-walk (function code)
+    "Like calls FUNCTION on any non-special-from code fragments.
+   Currently only these special forms are recognized:
+    (LET FLET MACROLET IF PROGN)"
+    ;; TODO Support all special forms
+    (flet ((recur (code) (code-walk function code) (values)))
+      (match code
+        ((list* 'let forms body4) (mapc #'recur body4))
+        ((list* 'flet forms body3) (mapc #'recur body3))
+        ((list* 'macrolet forms body2) (mapc #'recur body2))
+        ((list 'if expr then) (recur then))
+        ((list 'if expr then else) (recur then) (recur else))
+        ((list* 'progn body1) (mapc #'recur body1))
+        ((as form *) (& function form))))
+    (values))
+
+  (defun find-forms (predicate code)
+    (collecting
+      (code-walk (fn1 (if (& predicate !1)
+                           (collect !1)))
+                  code)))
+
+  (defun label-form? (expr) (match? (list 'c::label symbol) expr))
+  (defun var-form? (expr)
+    (match expr
+      ((list 'c::var (type symbol) (type symbol)) t)
+      ((list 'c::var (type symbol) (type symbol) (type number)) t)))
+
+  (defun find-labels (code)
+    "Returns all label names in the code block.  If a label is multiply
+   defined, an error is signaled.  "
+    (let ((labels (mapcar #'second
+                          (find-forms #'label-form? code))))
+      (aif (non-unique-items labels)
+           (error
+            "The following labels appear more than once in the same scope: ~a"
+            it)
+           labels)))
+
+  (defun find-vars (code)
+    (let* ((var-forms (find-forms #'var-form? code))
+           (var-names (mapcar #'second var-forms))
+           (var-types (mapcar #'third var-forms)))
+      (aif (non-unique-items var-names)
+           (error
+            "The following variables are declared more than once in the
+           same scope: ~a" it)
+           (mapcar #'cons var-names var-types)))))
+
+"## Labels, Gotos, Break, and Continue.  "
+
+"
+### Lexically bound macros and functions
+These macros and functions will be rebound as needed in other macros
+using CL:MACROLET and CL:FLET.
+"
+(defmacro c::continue () (error "continue statement not within a loop"))
+(defmacro c::break () (error "break statement not within a loop or switch"))
+(defmacro c::goto (label)
+  (error "goto (~a) statement outside of a function body" label))
+(defmacro c::label (name)
+  (error "label (~a) statement outside of a function body" name))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+    (defun lookup-label (name)
+  (error "Trying to lookup a label (~a) outside of a function body" name)))
+
+(defmacro labels-block (&body code)
+  "Binds the macros c::goto and c::label to generate branches and asm
+   labels.  "
+  (let ((code (preexpand `(progn ,@code))))
+    (with-gensyms (labels)
+      `(with-symbol-alias-alist ,labels ,(find-labels code)
+         (flet ((lookup-label (label) (or (lookup label ,labels)
+                                          (error "Undefined label ~a" label))))
+           (macrolet ((c::goto (label)
+                        (declare (type symbol label))
+                        `(%goto (lookup-label ',label)))
+                      (c::label (name)
+                        (declare (type symbol name))
+                        `(%label (lookup-label ',name))))
+             ,code))))))
+
+(defmacro with-goto-macrolet (macro-name label &body code)
+  `(macrolet ((,macro-name () `(c::goto ,',label)))
+     ,@code))
+
+(defmacro with-continue (continue-label &body code)
+  `(with-goto-macrolet c::continue ,continue-label ,@code))
+
+(defmacro with-break (break-label &body code)
+  `(with-goto-macrolet c::break ,break-label ,@code))
+
+
+"## Control Strutures"
+(defmacro c::if (test then-form &optional else-form)
+  (with-gensyms ((else "iflabel_else_") (end "iflabel_end_"))
+    `(with-indent "_if"
+       ,test
+       (%branch-if-not (lookup-label
+                        ',(if else-form else end)))
+       (with-indent "_if_then_form"
+         ,then-form)
+       ,(when else-form `(c::goto ,end))
+       ,(when else-form `(c::label ,else))
+       (with-indent "_if_else_form"
+         ,else-form)
+       (c::label ,end))))
+
+(defmacro c::while (test &body body)
+  (with-gensyms ((top "while_label_top") (end "while_label_end"))
+    `(with-break ,end
+       (with-continue ,top
+         (with-indent "_while"
+           (c::label ,top)
+           (c::if ,test
+                  (with-indent "_while_body"
+                    ,@body
+                    (c::goto ,top)))
+           (c::label ,end))))))
+
+(defmacro c::do-while (test &body body)
+  (with-gensyms ((top "dowhile_label_repeat")
+                 (end "dowhile_label_end"))
+    `(with-break ,end
+       (with-continue ,top
+         (with-indent "_do_while"
+           (c::label ,top)
+           (with-indent "_do_while_body"
+             ,@body)
+           (c::if ,test (c::goto ,top))
+           (c::label ,end))))))
+
+(defmacro c::for ((setup test iterate) &body body)
+  `(with-indent _for
+     ,setup
+     (c::while ,test
+       ,@body ,iterate)))
+
+
+
+"### Switch"
+(eval-when (:compile-toplevel :load-toplevel :execute)
+ (defun switch-case-values (cases) (mapcar #'first cases))
+ (defun switch-case-codes (cases) (mapcar #'second cases))
+ (defun gen-switch-label (value)
+   (etypecase value
+     (number (gensym (format nil "CASE_~a_" value)))
+     (symbol (progn
+               (or (eq value 'default)
+                   (error "case ~a is not a number" value))
+               (nice-gensym value)))))
+
+ (defun make-switch-jump-entry (value target)
+   (if (eq value 'default)
+       `(c::goto ,target)
+       `(progn
+          (asm cmp :immediate-w ,value)
+          (emit (format nil "BEQ {~a}" ',target)))))
+
+ (defun make-switch-target (target code)
+   `(progn (c::label ,target) ,code))
+
+ (defun switch-default-hack (jumps break-label)
+   "The 'default' case must be 'goto'ed at the end of jump clauses, but
+   it doesn't need to be at the end of the switch.  So, we look for
+   the generated default clause (which like '(goto DEFAULT####)') and
+   moves it to the end.  "
+   (multiple-value-bind (defaults numbers)
+       (lpartition (lambda (jump-form)
+                     (eq 'c::goto (first jump-form)))
+                   jumps)
+     (append numbers (or defaults
+                         `((c::goto ,break-label)))))))
+
+(defmacro c::switch (expr &body cases)
+  "The output is
+     - Each test in the order given a single test is of the form:
+           (CMP num BEQ case_label)
+     - The default test (BRA default_label)
+     - each label (in the order given) and it's code"
+  (with-gensyms (switch_end)
+    (let* ((values (switch-case-values cases))
+           (codes (switch-case-codes cases))
+           (labels (mapcar #'gen-switch-label values)))
+      `(with-indent _switch
+         (with-break ,switch_end
+           ,expr
+           (with-indent _switch_tests
+             ,@(switch-default-hack
+                (mapcar #'make-switch-jump-entry values labels)
+                switch_end))
+           (with-indent _switch_targets
+             ,@(mapcar #'make-switch-target labels codes))
+           (c::label ,switch_end))))))
+
+(defmacro c::block (&body code)
+  `(progn ,@code))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  "## Scopes and their identifiers and tags.  "
+  (defstruct scope
+    "The point of giving scopes names is to help generate better error
    messages and better names of generated names.  For exapmle an
    struct without a type name needs to have a type name generated."
-  identifiers tags name)
-(defun new-scope (name)
-  (make-scope :identifiers (make-hash-table)
-              :tags (make-hash-table)
-              :name name))
+    identifiers tags name)
 
-(defparameter *scopes* (list (new-scope 'global)))
-(defparameter *global-scope* (first *scopes*))
+  (defun new-scope (name)
+    (make-scope :identifiers (make-hash-table)
+                :tags (make-hash-table)
+                :name name))
 
-(defstruct c-var name type storage-class address)
-(defun new-var (name type storage-class address)
-  (make-c-var :name name
-              :type type
-              :storage-class storage-class
-              :address address))
+  (defparameter *scopes* (list (new-scope 'global)))
+  (defparameter *global-scope* (first *scopes*))
 
-(defparameter *labels* nil
-  "type: (or hash-table null).  Lables don't have nested scoping, so
-   we only need to keep track of the current scope insead of a keeping
-   a stack of scopes like other symbols.  There is no global labels
-   scope, so it will be nil at the top level.  ")
+  (defstruct c-var name type storage-class address)
+  (defun new-var (name type storage-class address)
+    (make-c-var :name name
+                :type type
+                :storage-class storage-class
+                :address address))
 
-(defun identifiers-table () (scope-identifiers (first *scopes*)))
-(defun tags-table () (scope-tags (first *scopes*)))
+  (defun identifiers-table () (scope-identifiers (first *scopes*)))
+  (defun tags-table () (scope-tags (first *scopes*)))
+
+  (defun bind-identifier (name value &optional (scope (first *scopes*)))
+    (setf (gethash name (scope-identifiers scope)) value)))
+
+(defmacro with-scope (name &body body)
+  `(let ((*scopes* (cons (new-scope ,name) *scopes*)))
+     ,@body))
+
+
+
 
 "## Global Memory Allocation"
 (defparameter *next-available-global-space* 0
@@ -42,325 +269,156 @@
       *next-available-global-space*
       (incf *next-available-global-space* size)))
 
-(defvar *stack-space* :undefined-stack-space
-  "Alist of stack-offset addresses")
-(defvar *breakpoint* :undefined-label)
-
-(defun stack-allocate (name)
-  (or (cdr (assoc name *stack-space*))
-      (error "Variable declaration ~a not at the top of its scope.  "
-             name)))
-
-(defun allocate-storage (name size type)
-  "Name is only used to look for pre-allocated space on the functions
-   stack.  The protocol is:
-     - c-fn scans it's code for valid declarations, and sets aside
-       space for them.
-     - We just return the space that we set up, or if signal an error
-       if there no space was set up.  "
-  (declare (ignore))
-  (ecase type
-    (:static (allocate-global size))
-    (:auto (stack-allocate name))))
-
-(defmacro c-var (name type &optional value)
-  "This expands into code that modifies the table at (identifiers-table),
-   and calls allocate-storage.  "
+(defmacro c::var (name type &optional value)
+  "This expands into code that declares a global variable.  A separate
+   version for stack variables is bound with a MACROLET in
+   c::proto.  "
   (when value (error "Setting variables is not implemented.  "))
-  (let ((size 2)) ;; replace 2 with (size-of type)
-    `(let ((storage-class (if (in-function?) :auto :static)))
-       (when (in-table? ',name (identifiers-table))
-         (error "More than one declaration of variable ~a in the same scope"
-                ',name))
-       (setf (gethash ',name (identifiers-table))
-             (new-var ',name ,type storage-class
-                      (allocate-storage ',name ,size storage-class))))))
+  `(let ((size 2)) ;; replace 2 with (size-of type)
+     (when (in-table? ',name (identifiers-table))
+       (error "More than one declaration of global identifier ~a.  "
+              ',name))
+     (setf (gethash ',name (identifiers-table))
+           (new-var ',name ',type :static
+                    (allocate-global size)))))
 
-(defmacro c-label (name)
-  (unless (symbolp name) (insult))
-  `(emit (format nil "{~a}" (gethash ',name *labels*))))
 
-(defun %c-goto (value)
-  (emit (format nil "BRA {~a}" value)))
 
-(defmacro c-goto (name)
-  (unless (symbolp name) (insult))
-  (let ((tmp (gensym)))
-    `(let ((,tmp (gethash ',name *labels*)))
-       (if ,tmp
-           (%c-goto ,tmp)
-           (error "Trying to goto a non-existent label: ~a" ',name)))))
+"## Functions and Subrountines"
+(defmacro c::subroutine (name &body code)
+  "This is like #'C-FN except it doesn't do any stack manipulation so no
+   variables, etc.  The only really supported constructs are labels
+   and gotos.  'NAME will **not** be mangled, so make sure it's what
+   you want.  "
+  `(labels-block
+     (bind-identifier ',name (list ',name :scope *scopes* :code ',code))
+     (asm-code ',name)
+     ,@code
+     (asm rts :implied)))
 
-(defun grab-vars (code)
-  "Returns a list of pairs of all the variable and their types seen at
-   the top of CODE.  "
-  (flet ((is-var? (expr)
-           (and (listp expr)
-                (member (length expr) '(3 4) :test #'eql)
-                (eq (first expr) 'c-var)
-                (symbolp (second expr))
-                (symbolp (third expr)))))
-    (iter (for expr in code)
-          (until (not (or (stringp expr)
-                          (is-var? expr))))
-          (unless (stringp expr) ;; Ignore Docstrings in c-function
-                                 ;; definitions
-            (collect (cons (second expr) (third expr)))))))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defun c-fn-unique-name (symbol)
+    "Returns a unique name for a function or a suggested unique-name.
+   Also returns whether the function was already bound and whether it
+   was already definied.  "
+    (flet ((prototype? (fn) (not (cdr fn))))
+      (multiple-value-bind (fn already-bound?)
+          (gethash symbol (scope-identifiers *global-scope*))
+        (values (if already-bound?
+                    (first fn)
+                    (nice-gensym symbol))
+                already-bound?
+                (not (prototype? fn)))))))
 
-(defun %code-walk (function code)
-  "Like (funcall function code) except we skip over some know
-   special-forms:
-    (LET IF PROGN) and recurse on their bodies.  "
-  (flet ((recur (code) (%code-walk function code)))
-    (match code
-      ((list* 'let forms body) `(let ,forms ,@(mapcar #'recur body)))
-      ((list 'if expr then) `(if ,expr ,(recur then)))
-      ((list 'if expr then else)
-       `(if ,expr ,(recur then) ,(recur else)))
-      ((list* 'progn body) `(progn ,@(mapcar #'recur body)))
-      ((as form *) (& function form)))))
+(defmacro c::proto (name)
+  "Binds a unique name to the function 'NAME in the global scope.
+   This allows us to reference functions in asm code that haven't been
+   defined yet.  Return the unique name.  "
+  (multiple-value-bind (unique bound? defined?)
+      (c-fn-unique-name name)
+    (if defined? (error "global identifier ~a is already bound" name))
+    (unless bound?
+      `(setf (gethash ',name (scope-identifiers *global-scope*))
+             (list ',unique)))
+    `',unique))
 
-(defun grab-labels (code)
-  "Returns all label names in the code block.  "
-  (let ((result))
-    (labels ((is-label? (expr)
-               (and (listp expr)
-                    (= 2 (length expr))
-                    (eq (first expr) 'c-label)
-                    (symbolp (second expr))))
-             (maybe-collect (x)
-               (if (is-label? x) (push x result))))
-      ;; TODO This should see through LET statements; Maybe iterate
-      ;; through code as a tree instead of as a list?
-      (mapc (fn1 (%code-walk #'maybe-collect !1)) code))
-    ;;(mapcar #'second (filter #'is-label? code)))
-    (mapcar #'second result)))
-
-(defun scan-labels (code)
-  "Return an alist mapping labels in code to their new globally-unique
-   names.  "
-  (let ((labels (grab-labels code)))
-    (aif (non-unique-items labels)
-         (error
-          "The following labels appear more than once in the same scope: ~a"
-          it))
-    (mapcar (lambda (label) (cons label (nice-gensym label)))
-            labels)))
-
-(defun unprogn (code)
-  "We return a list of statements in CODE.  If CODE is of the
-  form (PROGN &rest code), we return (code).  "
-  (if (and (listp code) (eq (first code) 'progn))
-      (flatten (mapcar #'unprogn (cdr code)))
-      (list code)))
-
-(defun c-preexpand (code)
-  "Recursively pre-expand and unprogn some specific macros so we can
-   analyze the resulting code.  "
-  (let ((to-expand '(c-if c-while c-for c-do-while c-switch unless)))
-    (flatten
-     (iter (for stmt in code)
-           (collect
-               (if (not (listp stmt))
-                   (list stmt)
-                   (cond
-                     ((eq 'let (first stmt))
-                      `((let ,(second stmt)
-                         ,@(c-preexpand (cddr stmt)))))
-                     ((member (first stmt) to-expand)
-                      (c-preexpand
-                       (unprogn (macroexpand-1 stmt))))
-                     (t (list stmt)))))))))
-
-(defmacro with-scope (name &body body)
-  `(let ((*scopes* (cons (new-scope ,name) *scopes*)))
-     ,@body
-     (values)))
-
-(defmacro 16-bit-mode () `(asm rep :immediate #x30))
-(defmacro 8-bit-mode () `(asm sep :immediate #x30))
-
-(defun in-function? () (not (eq (first *scopes*) *global-scope*)))
-(defmacro c-fn (name args &body code)
-  (when args (error "Function arguments are not supported.  "))
-  (let* ((input-code code)
-         (code (c-preexpand code))
-         (c-labels (scan-labels code))
-         (c-vars (grab-vars code))
-         (unique-name (nice-gensym name))
-         (local-stack-size 0)
-         (variable-spaces (iter (for (name . type) in c-vars)
-                                (collect
-                                  (cons name
-                                    (prog1 (1+ local-stack-size)
-                                           (incf local-stack-size 2)))))))
-    (format *error-output* "~%~a ~a~%" c-vars variable-spaces)
-    `(let ((*labels* (make-hash-table))
-           (*stack-space* ',variable-spaces))
-       (with-scope ',name
-         (alist-to-table ',c-labels *labels*)
-         (setf (gethash ',name (scope-identifiers *global-scope*))
-               (list ',unique-name
-                     :scope *scopes*
-                     :code ',input-code))
-         (emit ,(format nil "#Code w ~a" unique-name))
-         (asm clc :implied)
-         (asm xce :implied)
-         (16-bit-mode)
-         ,@(when (plusp local-stack-size)
-                 `((asm tsc :implied)
-                   (asm clc :implied)
-                   (asm sbc :immediate-w ,local-stack-size)
-                   (asm tcs :implied)))
-         ,@code
-         ,@(when (plusp local-stack-size)
-                 `((asm tsc :implied)
-                   (asm sec :implied)
-                   (asm adc :immediate-w ,local-stack-size)
-                   (asm tcs :implied)))
-         (asm rts :implied)))))
-
-;; TODO get rid of the real LOOKUP function which doesn't do the right
-;; thing.
-(defun -lookup (key alist)
-  (or (cdr (assoc key alist))
-      (error "key '~a was not found in alist '~a.  " key alist)))
-
-(defmacro c-stack-variable-set (name)
-  `(asm sta :stack-indexed (or (cdr (assoc ',name *stack-space*))
-                               (error "Undefined identifier ~a" ',name))))
-
-(defmacro c-stack-variable-reference (name)
-  `(asm lda :stack-indexed (or (cdr (assoc ',name *stack-space*))
-                               (error "Undefined identifier ~a" ',name))))
-
-(defun nice-gensym (obj)
-  (gensym (string-right-trim
-           "0123456789"
-           (format nil "~a" obj))))
-
-(defmacro c-if (test then &optional else)
-  (let ((else-label (gensym "ELSE"))
-        (end-label (gensym "END")))
-    `(progn
-       (unless (in-function?)
-         (error "All code must be inside a function.  "))
-       ,test
-       (emit (format nil "BEQ {~a}"
-                     (gethash (quote ,(if else else-label end-label))
-                              *labels*)))
-       ,then
-       ,(when else `(c-goto ,end-label))
-       ,(when else `(c-label ,else-label))
-       ,else
-       (c-label ,end-label))))
-
-(defmacro c-while (test &body body)
-  (let ((repeat-label (gensym "LOOP"))
-        (end-label (gensym "BREAK")))
-    `(progn ;let ((*breakpoint* ',end-label))
-       (unless (in-function?)
-         (error "All code must be inside a function.  "))
-       (c-label ,repeat-label)
-       (c-if ,test (progn ,@body (c-goto ,repeat-label)))
-       (c-label ,end-label))))
-
-(defmacro c-do-while (test &body body)
-  (let ((repeat-label (gensym "LOOP")))
-    `(progn
-       (unless (in-function?)
-         (error "All code must be inside a function.  "))
-       (c-label ,repeat-label)
-       ,@body
-       (c-if ,test (c-goto ,repeat-label)))))
-
-(defmacro c-for ((setup test iterate) &body body)
+(defmacro with-grown-stack (stack-size &body code)
+  "Return a PROGN that grows the stack by STACK-SIZE, runs CODE, then
+   shrinks the stack by STACK-SIZE.  "
   `(progn
-     ,setup
-     (while ,test
-       ,@body ,iterate)))
+     ,(when (plusp stack-size)
+            `(with-indent "_growing_the_stack"
+               (asm tsc :implied)
+               (asm clc :implied)
+               (asm sbc :immediate-w ,stack-size)
+               (asm tcs :implied)))
+     ,@code
+     ,(when (plusp stack-size)
+             `(with-indent "_shrinking_the_stack"
+                (asm tsc :implied)
+                (asm sec :implied)
+                (asm adc :immediate-w ,stack-size)
+                (asm tcs :implied)))))
 
-#|
-switch (getnum()) {
- case 3: return 3;
- case 4: break;
- default: exit(1); }
-return 4;
-|#
+(defmacro with-stack-lookup-macros (variable-spaces &body code)
+  "Binds C::VAR to set the variable if given a value and binds REF and
+   SET to read from and write to a variable by name.  "
+  (with-gensyms (stack-space)
+    `(let ((,stack-space ,variable-spaces))
+       (flet ((var-addr-mode (varname)
+                (declare (ignore varname))
+                :stack-indexed)
+              (var-addr (varname)
+                (elookup varname ,stack-space)))
+         (macrolet ((c::ref (var)
+                      `(asm lda (var-addr-mode ',var)
+                            (var-addr ',var)))
+                    (c::set (var)
+                      `(asm sta (var-addr-mode ',var)
+                            (var-addr ',var)))
+                    (c::var (name type &optional value)
+                      (declare (ignore type))
+                      (when value
+                        `(progn
+                           (lda ,value)
+                           (c::set ,name)))))
+           ,@code)))))
 
-; JSR getnum                expr
-; CMP #3w                   jumps
-; BEQ case_3
-; CMP #4w
-; BEQ case_4
-; BRA default
-; {case_3}                  targes
-; LDA #3w
-; RTS
-; {case_4}
-; BRA break
-; {default}
-; JSR exit
-; {break}
-; LDA #4w
-; RTS
+(defmacro with-stack-variables (variable-declarations &body code)
+  (let* ((vars variable-declarations)
+         (local-stack-size 0)
+         (variable-spaces (iter (for (name . type) in vars)
+                                (collect
+                                    (cons name
+                                          (prog1 (1+ local-stack-size)
+                                            (incf local-stack-size 2)))))))
+    `(with-grown-stack ,local-stack-size
+       (with-stack-lookup-macros ',variable-spaces
+         ,@code))))
 
-(defun switch-case-values (cases) (mapcar #'first cases))
-(defun switch-case-codes (cases) (mapcar #'second cases))
-(defun switch-label (value)
-  (etypecase value
-    (number (gensym (format nil "CASE_~a_" value)))
-    (symbol (progn
-              (or (eq value 'default)
-                  (error "case ~a is not a number" value))
-              (nice-gensym value)))))
+(defmacro c::proc (name args &body code)
+  (when args (error "Function arguments are not supported.  "))
+  (let* ((input-code `(progn ,@code))
+         (unique-name (c-fn-unique-name name))
+         (code (preexpand input-code))
+         (vars (find-vars code)))
+    `(with-scope ',name
+       (asm-code ',unique-name)
+       (with-stack-variables ,vars
+         (labels-block
+           (bind-identifier ',name (list ',name :scope *scopes* :code ',code))
+           ,code))
+       (asm rts :implied))))
 
-(defun make-switch-jump-entry (value target)
-  (if (eq value 'default)
-      `(c-goto ,target)
-      `(progn
-         (asm cmp :immediate-w ,value)
-         (emit (format nil "BEQ {~a}" ',target)))))
 
-(defun make-switch-target (target code)
-  `(progn (c-label ,target) ,code))
+"## Testing"
+(defun repl ()
+  (let ((eof '#.(gensym "EOF-")))
+    (loop for x = (read *standard-input* nil eof)
+       until (eq x eof) do (eval x)
+       do (force-output))))
 
-(defun partition (predicate list)
-  "Returns (values (remove-if-not predicate list)
-                   (remove-if predicate list)), but in a single
-   pass. "
-  (iter (for item in list)
-        (if (funcall predicate item)
-            (collect item into good-list)
-            (collect item into bad-list))
-        (finally (return (values good-list bad-list)))))
+(defun interactive-compiler-test (file)
+  (compiler-reset)
+  (with-open-file (*standard-input* file)
+    (repl)))
 
-(defun switch-default-hack (jumps break-label)
-  "The 'default' case must be 'goto'ed at the end of jump clauses, but
-   it doesn't need to be at the end of the switch.  So, we look for
-   the generated default clause (which like '(goto DEFAULT####)') and
-   moves it to the end.  "
-  (multiple-value-bind (defaults numbers)
-      (partition (lambda (jump-form)
-                   (eq 'c-goto (first jump-form)))
-                 jumps)
-    (append numbers (or defaults
-                        `((c-goto ,break-label))))))
+(defun compiler-reset ()
+  "For convience at the lisp repl; Clears out the global scope
+   effectively destroying everything the compiler has definied.  "
+  (clrhash (scope-identifiers *global-scope*))
+  (clrhash (scope-tags *global-scope*)))
 
-(defmacro c-break () '(%c-goto *breakpoint*))
 
-(defmacro c-switch (expr &body cases)
-  ;; TODO This is broken like your mom!!
-  (let* ((values (switch-case-values cases))
-         (codes (switch-case-codes cases))
-         (labels (mapcar #'switch-label values))
-         (break-label (gensym "BREAK")))
-    `(let ((*breakpoint* ',break-label))
-       (unless (in-function?)
-         (error "All code must be inside a function.  "))
-       ,expr
-       ,@(switch-default-hack
-          (mapcar #'make-switch-jump-entry values labels)
-          break-label)
-       ,@(mapcar #'make-switch-target labels codes)
-       (c-label ,break-label))))
+"## Compiler Defined Code"
+(c::proto main)
+
+(c::subroutine reset
+  (asm clc :implied)
+  (asm xce :implied)
+  (16-bit-mode)
+  (asm jsr :immediate 'main))
+
+(set-reset-handler "$8000")
+
+(emit "#LoROM")

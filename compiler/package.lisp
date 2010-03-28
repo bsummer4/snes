@@ -5,8 +5,10 @@ need to export symbols and stuff here.
 "
 
 (defpackage #:cs400-compiler
-  (:use #:cl #:iterate #:cl-match)
+  (:use #:cl #:iterate #:cl-match #:split-sequence)
   (:shadow #:match))
+
+(defpackage :c)
 
 (in-package #:cs400-compiler)
 (setf (readtable-case *readtable*) :invert)

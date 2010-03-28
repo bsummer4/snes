@@ -1,4 +1,4 @@
-#!/usr/bin/sbcl --script
+;#!/usr/bin/sbcl --script
 
 "
 A unix interface to the c compiler.
@@ -19,6 +19,10 @@ loading this file.  Otherwise we simply run the c-compiler as script.
     (loop for x = (read *standard-input* nil eof)
        until (eq x eof) do (eval x)
        do (force-output))))
+
+(defun interactive-compiler-test (file)
+  (with-open-file (*standard-input* file)
+    (repl)))
 
 (defun main (args)
   (declare (ignore args))
