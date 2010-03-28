@@ -1,0 +1,336 @@
+* Syntax and Compiler Implementation
+** S-expressions
+   Are a very general way syntax for just about anything.
+
+   - sequence: (a b c)
+   - symbols: a
+   - strings: "hi"
+   - keywords: :a
+   - number: 1/3, 0.3e12, 9999999999
+   - characters: #\a #\space
+   - etc.
+
+*** Data Structures
+**** Emulate JSON
+     [3, "4", {"yo": 4, 4: "yo"}]
+
+     (3 "4" (:yo 4 4 "yo"))
+
+     Or we can use a slightly more xml-like version.
+
+     (list 3 "4" (dict "yo" 4 4 "yo"))
+
+**** Emulate XML
+     <xml>
+       <document awesome="no">
+         Some text.
+       </document>
+     </xml>
+
+     (xml
+       (document (:awesome "yes")
+         "Some text."))
+
+*** S-expressions for source code
+    Most common language syntax's map nicely into s-expressions.
+
+    Exceptions:
+     - Tcl, sh, etc:
+       Syntax is based completely on strings
+
+     - forth, postscript, etc:
+         Syntax is just a flat list of symbols; No nesting needed.
+
+    Some examples of how you could represent the source code of some
+    common languages with s-expressions:
+
+**** Python
+***** Normal Syntax
+      def hi (x):
+          print "Hi there %s\n" % (x)
+
+      hi("Ben")
+
+***** S-expressions Syntax
+      (def hi (x)
+        (print (% "Hi there %s\n" x)))
+
+      (hi "Ben")
+
+**** Regular Expressions
+     Taken from the terse-ppcre library for Common Lisp.  The
+     s-expressions version is slightly more verbose, but easier to
+     read and manipulate.
+
+***** Normal Syntax
+      \d*
+      ^(?:A+|B+)$
+
+***** S-Expression Syntax
+      (re (* d))
+      (re ^ (or (+ "A") (+ "B")) $)
+
+**** C
+***** Normal Syntax
+      #include <stdio.h>
+      #include <stdlib.h>
+      #include "lib.h"
+      #include "macros.h"
+
+      extern int ffuuu(int x);
+
+      int main (int argc, char **argv)
+      {
+          {
+              int x = 3;
+              printf("Hello world!\n%d\n", x);
+           }
+          return fuuu(0);
+      }
+
+***** S-expressions Syntax
+      (sysinclude "stdio.h" "stdlib.h")
+      (include "lib.h" "macros.h")
+
+      (proto (fuuu int) (x int))
+
+      (proc main ((argc int) (argv (* (* char))))
+        (block
+          (var x int 3)
+          (printf "Hello world!\n%d\n" x))
+        (return (ffuuu 0)))
+
+*** Note: Code is Data
+    - Note that the s-expression syntaxes for code look exactly like
+      the s-expression syntax for data.
+    - Code is really just data;
+    - Data is really just code;
+    - S-expressions Make this clear
+    - Define functions and macros that allow us to interpret data like
+      code.
+    - Parse code and manipulate it like it is data.
+
+*** Note: S-expressions are Extensible Syntax
+    S-expressions let you add new syntax to a language without
+    cluttering the parsing rules or causing conflicts between
+    different syntax's.
+
+**** Regular Expressions in Lisp
+***** Perl
+      Perl gives special syntax to lots of things including Regular
+      Expressions. This makes regexps very nice, but makes the parsing
+      rules for perl very complicated and hard to understand.
+
+***** Python
+      Python gives special syntax to only a couple of things.  Regular
+      expressions are not one of those things, so we have to use
+      strings to represent s-expressions which is a bitch because of
+      quoting.
+
+******* Regexps as strings vs literals
+        compare:
+        - "\"\\d\"\\s\"\\d\""
+        - m/"\d"\s"\d"/
+
+***** Lisp
+      Regular Expressions are a library that, once imported, become a
+      natural extension to the language.
+
+****** Example
+       (scan (re ^ (+ (or "a" "b")) $) "aaabbbabab")
+
+**** An Object System for C
+
+* S-expression Syntax for C
+  I've designed a more-or-less complete mapping from s-expressions to
+  c syntax, and written a program to convert them.
+
+  We extend Common Lisp to allow us to treat (sexp) C source code as a
+  script that, when run, prints c code.
+
+** Macros
+    The following macro definitions implement the translator:
+
+   (def-statements c:break c:return c:goto c:continue)
+   (def-prefix-operators c:+ c:- c:! c:~ c:sizeof c:&)
+   (def-postfix-operators c:++ c:--)
+   (def-binary-operators
+     c:+ c:+= c:- c:-= c:* c:*= c:/ c:/= c:% c:%= c:< c:<= c:> c:>=
+     c:^= c:= c:[] c:-> c:!= c:&& c:\|\| c:<< c:<<= c:>> c:>>= c:== c:&
+     c:&= c:\| c:\|= c:^ c:|.| c:|,| c:->)
+
+   (def-type-modifiers
+     c:auto c:restrict c:unsigned c:extern c:volatile c:signed c:const
+     c:static c:inline c:register c:const)
+
+   (c:defmacro c:if (condition &optional then else) ...)
+   (c:defmacro c:for (a b c &body code) ...)
+   (c:defmacro c:while (expr &body code) ...)
+   (c:defmacro c:do-while (expr &body code) ...)
+   (c:defmacro c:label (symbol) ...)
+   (c:defmacro c:pre++ (expr) ...)
+   (c:defmacro c:pre-- (expr) ...)
+   (c:defmacro c:^ (pointer) ...)
+   (c:defmacro c:ref (expr) ...)
+   (c:defmacro c:@ (pointer) ...)
+   (c:defmacro c:deref (pointer) ...)
+   (c:defmacro c:dereference (pointer) ...)
+   (c:defmacro c:pre-increment (expression) ...)
+   (c:defmacro c:pre-decrement (expression) ...)
+   (c:defmacro c:block (&body body) ...)
+   (c:defmacro c:_ (container &rest indexes) ...)
+   (c:defmacro c:var (name type &optional value) ...)
+   (c:defmacro c:ptr (type) ...)
+   (c:defmacro c:const (type) ...)
+   (c:defmacro c:include (&rest includes) ...)
+   (c:defmacro c:sysinclude (&rest includes) ...)
+   (c:defmacro c:toplevel (&body body) ...)
+   (c:defmacro c:proto ((name type) &body arguments) ...)
+   (c:defmacro c:proc ((name type) arguments &body body) ...)
+   (c:defmacro c:typedef (type name) ...)
+   (c:defmacro c:deftype (name type) ...)
+   (c:defmacro c:defstruct (tagname &body elements) ...)
+   (c:defmacro c:struct (&body elements) ...)
+   (c:defmacro pragma (symbol) ...)
+   (c:defmacro progn (&body body) ...)
+   (c:defmacro vars (type &body vars) ...)
+   (c:defmacro c:switch (keyform &body cases) ...)
+   (c:defmacro comment (string) ...)
+   (c:defmacro define (var value) ...)
+   (c:defmacro defines (&body forms) ...)
+
+** Example
+   The output is actually generated from this input.  I did not
+   manipulate either.
+
+*** Input
+    (sysinclude "string.h" "stdio.h" "stdlib.h")
+
+    (deftype Y
+      (defstruct x
+        (var x (ptr (ptr char)))
+        (var y (ptr (ptr int)))))
+
+    (deftype Foo
+      (struct
+        (var x int)
+        (var y (ptr (ptr char)))))
+
+    (proc (g int) ((argc int) (argv (ptr (ptr Foo))))
+      (var x (ptr (ptr char)))
+      (var y (const (unsigned int)) 9)
+      (return 0))
+
+    (proto (add (extern int)) (x int) (y int) (z int))
+
+    (proc (main int) ((argc int) (argv (ptr (ptr char))))
+          (deftype X (defstruct x
+                      (var x int)
+                      (var y (ptr char))))
+          (var x X)
+          (! (++ (|.| x :x)))
+          (var xref (ptr X) (^ x))
+          (printf "%d -- %d"
+                  (int (_ x :x))
+                  (++ (|.| x :x)))
+          (return (add 4 (int (_ x :x)) (int (_ (@ xref) :x)))))
+
+*** Output
+    #include <string.h>
+    #include <stdio.h>
+    #include <stdlib.h>;
+
+    typedef struct x
+    {
+        char** x;
+        int** y;
+    } Y;
+
+    typedef struct
+    {
+        int x;
+        char** y;
+    } Foo;
+
+    int g (int argc, Foo** argv)
+    {
+        char** x;
+        const unsigned int y = 9;
+        return 0;
+    };
+
+    extern int add (int x, int y, int z);
+
+    int main (int argc, char** argv)
+    {
+        typedef struct x
+        {
+            int x;
+            char* y;
+        } X;
+        X x;
+        (!((x . x)++));
+        X* xref = (&x);
+        (printf)("%d -- %d", (int)((x.x)), ((x . x)++));
+        return (add)(4, (int)((x.x)), (int)(((*xref).x)));
+    };
+
+* Compiler Implementation
+** Code As Data
+   We extend Common Lisp to allow us to treat C source code as a
+   script that, when run, prints assembler code.
+
+** Example
+*** Language Extension Code
+    This is not all of the macros, just a couple of the big ones.
+
+    (defmacro c::proc (name arguments &body code) ...)
+    (defmacro c::var (name type &optional initial) ...)
+    (defmacro c::return (&optional value) ...)
+
+*** Input Code
+    (proc main ()
+      (var x int 1)
+      (while x (++ x))
+      (return x))
+
+*** Output code
+  _function_main
+   ; #code w main659
+      _growing_the_stack
+       ; TSC
+       ; CLC
+       ; SBC #$0002w
+       ; TCS
+     _setup_var_x
+      ; LDA #$0001w
+      ; STA $01b,s
+     _while
+      ; {while_label_top14}
+        _if
+         ; LDA $01b,S
+         ; BEQ {iflabel_end_15}
+           _if_then_form
+               _while_body
+                ; LDA $01b,S
+                ; INC A
+                ; STA $01b,S
+                ; BRA {while_label_top14}
+           _if_else_form
+            ; {iflabel_end_15}
+       ; {while_label_end16}
+     _return
+      ; LDA $01b,s
+      ; BRA {main_end}
+    ; {main_end}
+     _shrinking_the_stack
+      ; TSC
+      ; SEC
+      ; ADC #$0002w
+      ; TCS
+      ; RTS
+
+*** Implementation Issues
+    - The c::proc macro needs to know all the variable declarations
+      and labels in it's body.
+* Group Organization
