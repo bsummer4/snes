@@ -2,9 +2,10 @@
 
 "## Scratch Space"
 (defmacro c::funcall (function &rest args)
+  (assert (null args))
   ;; TODO THis is just for testing; it doesn't do anything.
   (format *error-output* "~%funcall: ~a(~{~a~^, ~})~%~%" function args)
-  `(lda #x0FAC))
+  `(asm jsr :absolute (c-fn-unique-name ',function)))
 
 (defmacro c::set (var)
   (declare (ignore var))
@@ -194,6 +195,7 @@ using CL:MACROLET and CL:FLET.
   (defun tags-table () (scope-tags (first *scopes*)))
 
   (defun bind-identifier (name value &optional (scope (first *scopes*)))
+    (format *error-output* "binding ~a to ~a~%" name (first value))
     (setf (gethash name (scope-identifiers scope)) value)))
 
 (defmacro with-scope (name &body body)
@@ -244,8 +246,8 @@ using CL:MACROLET and CL:FLET.
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun c-fn-unique-name (symbol)
     "Returns a unique name for a function or a suggested unique-name.
-   Also returns whether the function was already bound and whether it
-   was already definied.  "
+     Also returns whether the function was already bound and whether
+     it was already definied.  "
     (flet ((prototype? (fn) (not (cdr fn))))
       (multiple-value-bind (fn already-bound?)
           (gethash symbol (scope-identifiers *global-scope*))
@@ -262,10 +264,11 @@ using CL:MACROLET and CL:FLET.
   (multiple-value-bind (unique bound? defined?)
       (c-fn-unique-name name)
     (if defined? (error "global identifier ~a is already bound" name))
-    (unless bound?
-      `(setf (gethash ',name (scope-identifiers *global-scope*))
-             (list ',unique)))
-    `',unique))
+    `(progn
+       ,(unless bound?
+          `(setf (gethash ',name (scope-identifiers *global-scope*))
+                 (list ',unique)))
+       (asm-code ',unique :prototype t))))
 
 (defmacro with-grown-stack (stack-size &body code)
   "Return a PROGN that grows the stack by STACK-SIZE, runs CODE, then
@@ -321,6 +324,9 @@ using CL:MACROLET and CL:FLET.
        (with-stack-lookup-macros ',variable-spaces
          ,@code))))
 
+(defmacro with-return (label &body code)
+  `(with-goto-macrolet c::return ,label ,@code))
+
 (defmacro c::proc (name args &body code)
   (when args (error "Function arguments are not supported.  "))
   (let* ((input-code `(progn ,@code))
@@ -329,14 +335,27 @@ using CL:MACROLET and CL:FLET.
          (vars (find-vars code)))
     `(with-indent ,(format nil "_function_~s"
                            (intern (symbol-name name)))
-         (with-scope ',name
-       (asm-code ',unique-name)
-       (with-stack-variables ,vars
-         (labels-block
-           (bind-identifier ',name (list ',name :scope *scopes* :code ',code))
-           ,code))
-       (asm rts :implied)))))
+       ;;(with-gensyms (return-label)
+       ;;(with-return ,return-label
+       (with-scope ',name
+         (asm-code ',unique-name)
+         (16-bit-mode)
+         (with-stack-variables ,vars
+           (labels-block
+             (bind-identifier ',name
+                              (list ',unique-name :scope *scopes* :code ',code)
+                              *global-scope*)
+             ,code))
+         (asm rts :implied)))))
 
+
+"## Operators"
+(defmacro c::++ (var)
+  (declare (type symbol var))
+  `(c::block
+    (c::ref ,var)
+    (asm inc :accumulator)
+    (c::set ,var)))
 
 "## Testing"
 (defun repl ()
@@ -353,6 +372,10 @@ using CL:MACROLET and CL:FLET.
 
 (defun interactive-compiler-test (file)
   (compiler-reset)
+  (with-open-file (*standard-input* file)
+    (repl)))
+
+(defun compile-c (file)
   (with-open-file (*standard-input* file)
     (repl)))
 

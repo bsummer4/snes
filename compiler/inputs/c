@@ -1,60 +1,34 @@
-(c::var fuck-space :int)
-(c::var more-fuck-space :int)
+(emit "#LoROM")
+
+(c::proto c::setup_color_pallete)
 
 (c::proc c::main ()
-  (c::var c::x c::int)
-  (c::var c::y c::int)
-  (16-bit-mode)
-
-  (lda 1)
-  (c::set c::x)
-  c::y
-
-  "Set up some memory to cycle colors.  "
-  (16-bit-mode)
-  (write-w #x00F0 0)
-  (write-w #x00F2 0)
-
-  "Initialize video"
+  "Set screen to max brightness"
   (8-bit-mode)
   (asm lda :immediate #x0F)
-  (asm sta :absolute #x2100)
-  (asm lda :immediate #x00)
-  (asm sta :absolute #x2121)
-
+  (asm sta :absolute #x2100) ;;
   (16-bit-mode)
-  (c::while c::x
-    "Calculate the color to display"
-    (16-bit-mode)
 
-    c::x
-    (asm inc :accumulator)
-    (c::set c::x)
+  (c::var c::color c::int 0)
+  (c::while (lda 1)
 
-    (c::if (asm lda :absolute #x00F2) ;; if _ then trippy else black
-          (progn
-            (asm lda :immediate-w #x0000)
-            (asm clc :implied)
-            (asm adc :absolute #x00F0)
+    (c::setup_color_pallete)
+    (asm lda :absolute #x4218)
+    (c::if (asm and :immediate-w #x0100)
+       (c::++ c::color)
+       c::color)
 
-            "Increment our color-offset memory space by 16.  "
-            (asm pha :implied) ;; stash A for later
-            (asm lda :absolute #x00F0)
-            (asm clc :implied)
-            (asm adc :immediate-w #x0001)
-            (asm sta :absolute #x00F0)
-            (asm pla :implied))
-
-          (asm lda :immediate-w #x0000))
-
-    "Set the screen color"
+    "Choose color-pallete 0 color 0, and set the screen color.  "
     (8-bit-mode)
     (asm sta :absolute #x2122)
     (asm xba :implied)
     (asm sta :absolute #x2122)
+    (16-bit-mode))
 
-    ;; *(0x00F2) = !(*(0x00F2))
-    (16-bit-mode)
-    (c::if (asm lda :absolute #x00F2)
-          (write-w #x00F2 #x0001)
-          (write-w #x00F2 #x0001))))
+  (c::label c::death))
+
+(c::proc c::setup_color_pallete ()
+  (8-bit-mode)
+  (asm lda :immediate #x00)
+  (asm sta :absolute #x2121)
+  (16-bit-mode))

@@ -77,7 +77,12 @@
 (defun %branch-if-not (label-name)
   (emit (format nil "BEQ {~a}" label-name)))
 
-(defun asm-code (symbol) (emit (format nil "#Code w ~a" symbol)))
+(defun asm-code (symbol &key (prototype nil))
+  (emit
+   (format nil (if prototype "#Code w ~a" "#Code w {~a}")
+           (string-downcase
+            (symbol-name symbol)))))
+
 (defmacro 16-bit-mode () `(asm rep :immediate #x30))
 (defmacro 8-bit-mode () `(asm sep :immediate #x30))
 (defun lda (integer)

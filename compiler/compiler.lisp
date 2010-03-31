@@ -16,8 +16,8 @@ loading this file.  Otherwise we simply run the c-compiler as script.
 
 (defun main (args)
   (declare (ignore args))
-  (interactive-compiler-test "compiler-lib.c.lisp")
   (repl)
+  (compile-c "compiler-lib.c.lisp")
   0)
 
 (defun top ()
