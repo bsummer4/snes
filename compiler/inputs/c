@@ -1,35 +1,37 @@
-(emit "#LoROM")
+(in-package :c)
 
-(c::proto c::setup_color_pallete)
+(s::emit "#LoROM")
 
-(c::proc c::main ()
+(proto setup_color_pallete)
+
+(proc (main int) ()
 
   "Set screen to max brightness"
-  (8-bit-mode)
-  (asm lda :immediate #x0F)
-  (asm sta :absolute #x2100)
-  (16-bit-mode)
+  (s::8-bit-mode)
+  (s::asm s::lda :immediate #x0F)
+  (s::asm s::sta :absolute #x2100)
+  (s::16-bit-mode)
 
-  (c::var c::color c::int 0)
-  (c::while (lda 1)
+  (var color int 0)
+  (while (s::lda 1)
 
-    (c::setup_color_pallete)
+    (setup_color_pallete)
 
     "Get input from the controller"
-    (asm lda :absolute #x4218)
-    (c::if (asm and :immediate-w #x0100) ;; is right button depressed?
-       (c::++ c::color)
-       c::color)
+    (s::asm s::lda :absolute #x4218)
+    (if (s::asm s::and :immediate-w #x0100) ;; is right button depressed?
+       (++ color)
+       color)
 
     "Choose color-pallete 0 color 0, and set the screen color.  "
-    (8-bit-mode)
-    (asm sta :absolute #x2122)
-    (asm xba :implied)
-    (asm sta :absolute #x2122)
-    (16-bit-mode)))
+    (s::8-bit-mode)
+    (s::asm s::sta :absolute #x2122)
+    (s::asm s::xba :implied)
+    (s::asm s::sta :absolute #x2122)
+    (s::16-bit-mode)))
 
-(c::proc c::setup_color_pallete ()
-  (8-bit-mode)
-  (asm lda :immediate #x00)
-  (asm sta :absolute #x2121)
-  (16-bit-mode))
+(proc (setup_color_pallete void) ()
+  (s::8-bit-mode)
+  (s::asm s::lda :immediate #x00)
+  (s::asm s::sta :absolute #x2121)
+  (s::16-bit-mode))

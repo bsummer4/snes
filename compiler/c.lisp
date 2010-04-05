@@ -4,7 +4,7 @@
 (defmacro c::funcall (function &rest args)
   (assert (null args))
   ;; TODO THis is just for testing; it doesn't do anything.
-  (format *error-output* "~%funcall: ~a(~{~a~^, ~})~%~%" function args)
+  ;(format *error-output* "~%funcall: ~a(~{~a~^, ~})~%~%" function args)
   `(asm jsr :absolute (c-fn-unique-name ',function)))
 
 (defmacro c::set (var)
@@ -195,7 +195,6 @@ using CL:MACROLET and CL:FLET.
   (defun tags-table () (scope-tags (first *scopes*)))
 
   (defun bind-identifier (name value &optional (scope (first *scopes*)))
-    (format *error-output* "binding ~a to ~a~%" name (first value))
     (setf (gethash name (scope-identifiers scope)) value)))
 
 (defmacro with-scope (name &body body)
@@ -327,7 +326,8 @@ using CL:MACROLET and CL:FLET.
 (defmacro with-return (label &body code)
   `(with-goto-macrolet c::return ,label ,@code))
 
-(defmacro c::proc (name args &body code)
+(defmacro c::proc ((name return-type) args &body code)
+  (declare (ignore return-type))
   (when args (error "Function arguments are not supported.  "))
   (let* ((input-code `(progn ,@code))
          (unique-name (c-fn-unique-name name))

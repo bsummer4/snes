@@ -3,6 +3,7 @@ ASM = ../assembler/65816asm
 
 all: compiler;
 clean:; rm -f *.fasl *.asm *.smc *~ compiler
+install: compiler; ln -f compiler ~/bin/scc
 
 ../assembler/65816asm:; cd ../assembler; make
 compiler: asm.lisp c.lisp compiler.lisp lib.lisp package.lisp Makefile
