@@ -117,4 +117,6 @@
         step.
     - This is the way Common Lisp
       implementations work.
+    - This is the way Common Lisp
+      libraries work.
     :END:
