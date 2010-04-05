@@ -32,17 +32,17 @@ labels or variable declarations in a function body.
     ;; TODO Support all special forms
     (flet ((recur (code) (code-walk function code)))
       (match code
-        ((list* 'let forms body4) `(let ,forms
-                                     ,@(mapcar #'recur body4)))
-        ((list* 'flet forms body3) `(flet ,forms
-                                      ,@(mapcar #'recur body3)))
-        ((list* 'macrolet forms body2) `(macrolet ,forms
-                                          ,@(mapcar #'recur body2)))
+        ((list* 'let forms body) `(let ,forms
+                                     ,@(mapcar #'recur body)))
+        ((list* 'flet forms body) `(flet ,forms
+                                      ,@(mapcar #'recur body)))
+        ((list* 'macrolet forms body) `(macrolet ,forms
+                                          ,@(mapcar #'recur body)))
         ((list 'if expr then) `(if ,expr ,(recur then)))
         ((list 'if expr then else) `(if ,expr
                                         ,(recur then)
                                         ,(recur else)))
-        ((list* 'progn body1) `(progn ,@(mapcar #'recur body1)))
+        ((list* 'progn body) `(progn ,@(mapcar #'recur body)))
         ((as form *) (& function form)))))
 
 (defun find-forms (predicate code)

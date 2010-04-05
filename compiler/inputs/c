@@ -3,18 +3,21 @@
 (c::proto c::setup_color_pallete)
 
 (c::proc c::main ()
+
   "Set screen to max brightness"
   (8-bit-mode)
   (asm lda :immediate #x0F)
-  (asm sta :absolute #x2100) ;;
+  (asm sta :absolute #x2100)
   (16-bit-mode)
 
   (c::var c::color c::int 0)
   (c::while (lda 1)
 
     (c::setup_color_pallete)
+
+    "Get input from the controller"
     (asm lda :absolute #x4218)
-    (c::if (asm and :immediate-w #x0100)
+    (c::if (asm and :immediate-w #x0100) ;; is right button depressed?
        (c::++ c::color)
        c::color)
 
@@ -23,9 +26,7 @@
     (asm sta :absolute #x2122)
     (asm xba :implied)
     (asm sta :absolute #x2122)
-    (16-bit-mode))
-
-  (c::label c::death))
+    (16-bit-mode)))
 
 (c::proc c::setup_color_pallete ()
   (8-bit-mode)
