@@ -2,11 +2,27 @@
 
 "## Scratch Space"
 (defmacro c::funcall (function &rest args)
-  (assert (null args))
-  ;; TODO THis is just for testing; it doesn't do anything.
+  (dolist (a args) (assert (or (symbolp a) (numberp a))))
+  ;; TODO This is just for testing; it doesn't do anything.
   ;(format *error-output* "~%funcall: ~a(~{~a~^, ~})~%~%" function args)
-  `(asm jsr :absolute (c-fn-unique-name ',function)))
+  `(with-indent ,(format nil "_call_to_~a" function)
+     (need-call-space ,(length args))
+     ,@(loop for arg in (reverse args)
+             for i from 1
+             when (numberp arg)
+             collect `(lda ,arg)
+             when (symbolp arg)
+             collect `(c::ref ,arg)
+             collect `(asm sta :stack-indexed ,(1- (* 2 i))))
+     (asm jsr :absolute (c-fn-unique-name ',function))))
 
+(defmacro need-call-space (amount)
+  (declare (ignore amount))
+  (values))
+
+;; - TODO These should access global variables.
+;; - TODO The macrolet c::set in a scope should fall through to this
+;;   version if it can't be found.
 (defmacro c::set (var)
   (declare (ignore var))
   (error "Code outside of a function!"))
@@ -49,7 +65,6 @@ using CL:MACROLET and CL:FLET.
                         (declare (type symbol label))
                         `(%goto (lookup-label ',label)))
                       (c::label (name)
-
                         `(%label (lookup-label ',name))))
              ,code))))))
 
@@ -311,16 +326,20 @@ using CL:MACROLET and CL:FLET.
                            (c::set ,name)))))
            ,@code)))))
 
-(defmacro with-stack-variables (variable-declarations &body code)
+(defmacro with-stack-variables (variable-declarations args call-space
+                                &body code)
   (let* ((vars variable-declarations)
-         (local-stack-size 0)
+         (local-stack-size call-space)
          (variable-spaces (iter (for (name . type) in vars)
                                 (collect
                                     (cons name
                                           (prog1 (1+ local-stack-size)
-                                            (incf local-stack-size 2)))))))
+                                            (incf local-stack-size 2))))))
+         (argument-spaces (iter (for name in (reverse args))
+                                (for index from (+ 1 2 local-stack-size) by 2)
+                                (collect (cons name index)))))
     `(with-grown-stack ,local-stack-size
-       (with-stack-lookup-macros ',variable-spaces
+       (with-stack-lookup-macros ',(append argument-spaces variable-spaces)
          ,@code))))
 
 (defmacro with-return (label &body code)
@@ -328,10 +347,10 @@ using CL:MACROLET and CL:FLET.
 
 (defmacro c::proc ((name return-type) args &body code)
   (declare (ignore return-type))
-  (when args (error "Function arguments are not supported.  "))
   (let* ((input-code `(progn ,@code))
          (unique-name (c-fn-unique-name name))
-         (code (transform-c-syntax (preexpand input-code)))
+         (code (preexpand (transform-c-syntax (preexpand input-code))))
+         (needed-call-space (needed-call-space code))
          (vars (find-vars code)))
     `(with-indent ,(format nil "_function_~s"
                            (intern (symbol-name name)))
@@ -340,7 +359,7 @@ using CL:MACROLET and CL:FLET.
        (with-scope ',name
          (asm-code ',unique-name)
          (16-bit-mode)
-         (with-stack-variables ,vars
+         (with-stack-variables ,vars ,args ,needed-call-space
            (labels-block
              (bind-identifier ',name
                               (list ',unique-name :scope *scopes* :code ',code)

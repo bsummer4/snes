@@ -17,6 +17,7 @@ labels or variable declarations in a function body.
   (dh c::goto (goto name) `(list ',goto ',name))
   (dh c::set (set var) `(list ',set ',var))
   (dh c::ref (ref var) `(list ',ref ',var))
+  (dh need-call-space (macro-name amount) `(list ',macro-name ',amount))
   (dh c::var (var name type &optional default-value)
       (if default-value
           `(list ',var ',name ',type ',default-value)
@@ -55,6 +56,11 @@ labels or variable declarations in a function body.
 (defun c-symbol? (symbol)
   (eq (symbol-package symbol) (find-package :c)))
 
+(defun call-space-request? (form)
+  (match form
+    ((list 'need-call-space (type number))
+     t)))
+
 (defun funcall-form? (expr)
   (match expr
     ((list* (as f (type symbol)) xs)
@@ -91,6 +97,15 @@ labels or variable declarations in a function body.
           "The following variables are declared more than once in the
            same scope: ~a" it)
          (mapcar #'cons var-names var-types))))
+
+(defun find-call-space-requests (code)
+  (find-forms #'call-space-request? code))
+
+(defun needed-call-space (code)
+  (* 2 ;; TODO This assumes that all types are two bytes
+     (or (iter (for form in (find-call-space-requests code))
+           (maximize (second form)))
+         0)))
 
 (defun transform-expr (expr)
   (cond ((funcall-form? expr) `(c::funcall ,@expr))
