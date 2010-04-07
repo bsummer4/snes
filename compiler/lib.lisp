@@ -119,3 +119,12 @@
             (collect item into good-list)
             (collect item into bad-list))
         (finally (return (values good-list bad-list)))))
+
+(defun listify (obj)
+  (typecase obj (list obj) (t (list obj))))
+
+(defmacro pluralize-macro (macro newname)
+  (with-gensyms (forms)
+    `(defmacro ,newname (&body ,forms)
+       `(progn
+          ,@(mapcar (fn1 (cons ',macro (listify !1))) ,forms)))))
