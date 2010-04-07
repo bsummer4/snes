@@ -1,3 +1,6 @@
+;; TODO you can define a function argument and a function local
+;; variable with the same name.
+
 (in-package #:cs400-compiler)
 
 "## Scratch Space"
@@ -289,14 +292,14 @@ using CL:MACROLET and CL:FLET.
      ,(when (plusp stack-size)
             `(with-indent "_growing_the_stack"
                (asm tsc :implied)
-               (asm clc :implied)
+               (asm sec :implied)
                (asm sbc :immediate-w ,stack-size)
                (asm tcs :implied)))
      ,@code
      ,(when (plusp stack-size)
              `(with-indent "_shrinking_the_stack"
                 (asm tsc :implied)
-                (asm sec :implied)
+                (asm clc :implied)
                 (asm adc :immediate-w ,stack-size)
                 (asm tcs :implied)))))
 
@@ -362,7 +365,7 @@ using CL:MACROLET and CL:FLET.
          (with-stack-variables ,vars ,args ,needed-call-space
            (labels-block
              (bind-identifier ',name
-                              (list ',unique-name :scope *scopes* :code ',code)
+                              (list ',unique-name :code ',code)
                               *global-scope*)
              ,code))
          (asm rts :implied)))))

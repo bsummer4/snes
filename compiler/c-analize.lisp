@@ -110,6 +110,7 @@ labels or variable declarations in a function body.
 (defun transform-expr (expr)
   (cond ((funcall-form? expr) `(c::funcall ,@expr))
         ((var-ref-form? expr) `(var->A ,expr))
+        ((numberp expr) `(var->A ,expr))
         (t expr)))
 
 (defun transform-c-syntax (block)
