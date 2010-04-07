@@ -11,12 +11,12 @@ labels or variable declarations in a function body.
 (macrolet ((dh (n fs &body code)
              `(macroexpand-dammit::defhandler ,n ,fs ,@code)))
   "We tell macroexpand-dammit not to expand c::label c::goto c::var
-     c::ref or c::set, since we need to scan code-bodies for these (or
+     var->A or A->var, since we need to scan code-bodies for these (or
      because we want rebind them in a macrolet after preexpansion).  "
   (dh c::label (label name) `(list ',label ',name))
   (dh c::goto (goto name) `(list ',goto ',name))
-  (dh c::set (set var) `(list ',set ',var))
-  (dh c::ref (ref var) `(list ',ref ',var))
+  (dh A->var (set var) `(list ',set ',var))
+  (dh var->A (ref var) `(list ',ref ',var))
   (dh need-call-space (macro-name amount) `(list ',macro-name ',amount))
   (dh c::var (var name type &optional default-value)
       (if default-value
@@ -109,7 +109,7 @@ labels or variable declarations in a function body.
 
 (defun transform-expr (expr)
   (cond ((funcall-form? expr) `(c::funcall ,@expr))
-        ((var-ref-form? expr) `(c::ref ,expr))
+        ((var-ref-form? expr) `(var->A ,expr))
         (t expr)))
 
 (defun transform-c-syntax (block)

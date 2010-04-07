@@ -12,7 +12,7 @@
              when (numberp arg)
              collect `(lda ,arg)
              when (symbolp arg)
-             collect `(c::ref ,arg)
+             collect `(var->A ,arg)
              collect `(asm sta :stack-indexed ,(1- (* 2 i))))
      (asm jsr :absolute (c-fn-unique-name ',function))))
 
@@ -21,13 +21,13 @@
   (values))
 
 ;; - TODO These should access global variables.
-;; - TODO The macrolet c::set in a scope should fall through to this
+;; - TODO The macrolet A->var in a scope should fall through to this
 ;;   version if it can't be found.
-(defmacro c::set (var)
+(defmacro A->var (var)
   (declare (ignore var))
   (error "Code outside of a function!"))
 
-(defmacro c::ref (var)
+(defmacro var->A (var)
   (declare (ignore var))
   (error "Code outside of a function!"))
 
@@ -217,8 +217,6 @@ using CL:MACROLET and CL:FLET.
      ,@body))
 
 
-
-
 "## Global Memory Allocation"
 (defparameter *next-available-global-space* 0
   "This will be ***MODIFIED*** when new global space is requested.  ")
@@ -312,10 +310,12 @@ using CL:MACROLET and CL:FLET.
                 :stack-indexed)
               (var-addr (varname)
                 (elookup varname ,stack-space)))
-         (macrolet ((c::ref (var)
-                      `(asm lda (var-addr-mode ',var)
-                            (var-addr ',var)))
-                    (c::set (var)
+         (macrolet ((var->A (var)
+                      (etypecase var
+                        (symbol `(asm lda (var-addr-mode ',var)
+                                      (var-addr ',var)))
+                        (number `(lda ,var))))
+                    (A->var (var)
                       `(asm sta (var-addr-mode ',var)
                             (var-addr ',var)))
                     (c::var (name type &optional value)
@@ -323,7 +323,7 @@ using CL:MACROLET and CL:FLET.
                       (when value
                         `(progn
                            (lda ,value)
-                           (c::set ,name)))))
+                           (A->var ,name)))))
            ,@code)))))
 
 (defmacro with-stack-variables (variable-declarations args call-space
@@ -372,9 +372,9 @@ using CL:MACROLET and CL:FLET.
 (defmacro c::++ (var)
   (declare (type symbol var))
   `(c::block
-    (c::ref ,var)
+    (var->A ,var)
     (asm inc :accumulator)
-    (c::set ,var)))
+    (A->var ,var)))
 
 "## Testing"
 (defun repl ()
@@ -403,19 +403,19 @@ using CL:MACROLET and CL:FLET.
   (c::var c::x c::int 1)
   (c::var c::y c::int 2)
   c::x
-  (c::set c::y)
-  (c::while c::x (lda 0) (c::set c::x))
+  (A->var c::y)
+  (c::while c::x (lda 0) (A->var c::x))
   (c::f c::x)
   (c::while c::y
     (c::switch c::x
       (3 (c::block (lda 1)
-           (c::set c::x)))
+           (A->var c::x)))
       (4) (5) (6) (7) (8) (9 (c::block
                                  (lda 0)
-                               (c::set c::x)))
+                               (A->var c::x)))
       (default (c::block
-                   (lda 1) (c::set c::y)
+                   (lda 1) (A->var c::y)
                    (c::break)))
       (10 (c::continue))))
   c::y)
-  |#
+|#
