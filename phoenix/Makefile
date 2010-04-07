@@ -6,3 +6,4 @@ all: phoenix.smc
 $(AC):; cd ../assembler; make
 phoenix.smc: $(data_files) phoenix.asm $(AC); $(AC) phoenix.asm
 clean:; rm -f phoenix.smc
+test: all; snes9x phoenix.smc
