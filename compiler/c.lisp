@@ -10,13 +10,16 @@
   ;(format *error-output* "~%funcall: ~a(~{~a~^, ~})~%~%" function args)
   `(with-indent ,(format nil "_call_to_~a" function)
      (need-call-space ,(length args))
-     ,@(loop for arg in (reverse args)
-             for i from 1
-             when (numberp arg)
-             collect `(lda ,arg)
-             when (symbolp arg)
-             collect `(var->A ,arg)
-             collect `(asm sta :stack-indexed ,(1- (* 2 i))))
+     ,@(iter (for arg in (reverse args))
+             (for i from 1)
+
+             ;; TODO Hack
+             (collect `(with-indent ,(format nil "_arg_~a" arg)))
+             (when (numberp arg)
+               (collect `(lda ,arg)))
+             (when (symbolp arg)
+               (collect `(->A ,arg)))
+             (collect `(asm sta :stack-indexed ,(1- (* 2 i)))))
      (asm jsr :absolute (c-fn-unique-name ',function))))
 
 (defmacro need-call-space (amount)
@@ -24,13 +27,13 @@
   (values))
 
 ;; - TODO These should access global variables.
-;; - TODO The macrolet A->var in a scope should fall through to this
+;; - TODO The macrolet A-> in a scope should fall through to this
 ;;   version if it can't be found.
-(defmacro A->var (var)
+(defmacro A-> (var)
   (declare (ignore var))
   (error "Code outside of a function!"))
 
-(defmacro var->A (var)
+(defmacro ->A (var)
   (declare (ignore var))
   (error "Code outside of a function!"))
 
@@ -56,8 +59,9 @@ using CL:MACROLET and CL:FLET.
 (defmacro labels-block (&body code)
   "Binds the macros c::goto and c::label to generate branches and asm
    labels.  "
-  (let ((code (transform-c-syntax
-               (preexpand `(progn ,@code)))))
+  (let ((code (preexpand
+               (transform-c-syntax
+                (preexpand `(progn ,@code))))))
     (with-gensyms (labels)
       `(with-symbol-alias-alist ,labels ,(find-labels code)
          (flet ((lookup-label (label)
@@ -221,7 +225,7 @@ using CL:MACROLET and CL:FLET.
 
 
 "## Global Memory Allocation"
-(defparameter *next-available-global-space* 0
+(defparameter *next-available-global-space* #x0100
   "This will be ***MODIFIED*** when new global space is requested.  ")
 
 (defun allocate-global (size)
@@ -313,12 +317,12 @@ using CL:MACROLET and CL:FLET.
                 :stack-indexed)
               (var-addr (varname)
                 (elookup varname ,stack-space)))
-         (macrolet ((var->A (var)
+         (macrolet ((->A (var)
                       (etypecase var
                         (symbol `(asm lda (var-addr-mode ',var)
                                       (var-addr ',var)))
                         (number `(lda ,var))))
-                    (A->var (var)
+                    (A-> (var)
                       `(asm sta (var-addr-mode ',var)
                             (var-addr ',var)))
                     (c::var (name type &optional value)
@@ -326,7 +330,7 @@ using CL:MACROLET and CL:FLET.
                       (when value
                         `(progn
                            (lda ,value)
-                           (A->var ,name)))))
+                           (A-> ,name)))))
            ,@code)))))
 
 (defmacro with-stack-variables (variable-declarations args call-space
@@ -348,13 +352,15 @@ using CL:MACROLET and CL:FLET.
 (defmacro with-return (label &body code)
   `(with-goto-macrolet c::return ,label ,@code))
 
+
 (defmacro c::proc ((name return-type) args &body code)
   (declare (ignore return-type))
   (let* ((input-code `(progn ,@code))
          (unique-name (c-fn-unique-name name))
          (code (preexpand (transform-c-syntax (preexpand input-code))))
          (needed-call-space (needed-call-space code))
-         (vars (find-vars code)))
+         (vars (append (find-vars code)
+                       (find-temp-variables code))))
     `(with-indent ,(format nil "_function_~s"
                            (intern (symbol-name name)))
        ;;(with-gensyms (return-label)
@@ -372,19 +378,6 @@ using CL:MACROLET and CL:FLET.
 
 
 "## Operators"
-(defmacro c::++ (var)
-  (declare (type symbol var))
-  `(c::block
-    (var->A ,var)
-    (asm inc :accumulator)
-    (A->var ,var)))
-
-(defmacro c::-- (var)
-  `(c::block
-     (var->A ,var)
-     (asm dec :accumulator)
-     (A->var ,var)))
-
 (defmacro nice-block (name &body code)
   `(with-indent ,(format nil "_~a" name)
      (c::block ,@code)))
@@ -393,7 +386,7 @@ using CL:MACROLET and CL:FLET.
   `(defmacro ,operator (operand-1 operand-2)
      `(nice-block ,',(symbol-name operator)
         ,',prelude
-        (var->A ,operand-1)
+        (->A ,operand-1)
         ,(etypecase operand-2
            (symbol `(asm ,',mnemonic (var-addr-mode ',operand-2)
                          (var-addr ',operand-2)))
@@ -410,20 +403,36 @@ using CL:MACROLET and CL:FLET.
   (c::\| ora)
   (c::bor ora))
 
+(defmacro c::++ (var)
+  (declare (type symbol var))
+  `(c::block
+    (->A ,var)
+    (asm inc :accumulator)
+    (A-> ,var)))
+
+(defmacro c::-- (var)
+  `(c::block
+     (->A ,var)
+     (asm dec :accumulator)
+     (A-> ,var)))
+
 (defmacro c::@ (operand)
   "Address of a variable"
   (declare (type symbol operand))
-  `(case (var-addr-mode ',operand)
-     (:stack-indexed
-      (asm clc :implied)
-      (asm tsc :implied)
-      (asm adc :immediate-w (var-addr ',operand)))
-     (:absolute (var-addr ',operand))))
+  `(nice-block ,(format nil "address_of_~a" operand)
+    (case (var-addr-mode ',operand)
+      (:stack-indexed
+       (asm clc :implied)
+       (asm tsc :implied)
+       (asm adc :immediate-w (var-addr ',operand)))
+      (:absolute (var-addr ',operand)))))
 
 (defmacro c::$ (operand)
   "Pointer dereference.  "
-  (declare (ignore operand))
-  (error "TODO"))
+  `(nice-block 'dereference
+     (->A ,operand)
+     (asm sta :immediate-w 00)
+     (asm lda :direct-indirect 00)))
 
 "## Testing"
 (defun repl ()
@@ -452,18 +461,18 @@ using CL:MACROLET and CL:FLET.
   (c::var c::x c::int 1)
   (c::var c::y c::int 2)
   c::x
-  (A->var c::y)
-  (c::while c::x (lda 0) (A->var c::x))
+  (A-> c::y)
+  (c::while c::x (lda 0) (A-> c::x))
   (c::f c::x)
   (c::while c::y
     (c::switch c::x
       (3 (c::block (lda 1)
-           (A->var c::x)))
+           (A-> c::x)))
       (4) (5) (6) (7) (8) (9 (c::block
                                  (lda 0)
-                               (A->var c::x)))
+                               (A-> c::x)))
       (default (c::block
-                   (lda 1) (A->var c::y)
+                   (lda 1) (A-> c::y)
                    (c::break)))
       (10 (c::continue))))
   c::y)

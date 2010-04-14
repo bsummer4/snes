@@ -11,12 +11,13 @@ labels or variable declarations in a function body.
 (macrolet ((dh (n fs &body code)
              `(macroexpand-dammit::defhandler ,n ,fs ,@code)))
   "We tell macroexpand-dammit not to expand c::label c::goto c::var
-     var->A or A->var, since we need to scan code-bodies for these (or
+     ->A or A->, since we need to scan code-bodies for these (or
      because we want rebind them in a macrolet after preexpansion).  "
   (dh c::label (label name) `(list ',label ',name))
   (dh c::goto (goto name) `(list ',goto ',name))
-  (dh A->var (set var) `(list ',set ',var))
-  (dh var->A (ref var) `(list ',ref ',var))
+  (dh A-> (set var) `(list ',set ',var))
+  (dh ->A (ref var) `(list ',ref ',var))
+  (dh spill (ref var) `(list ',ref ',var))
   (dh need-call-space (macro-name amount) `(list ',macro-name ',amount))
   (dh c::var (var name type &optional default-value)
       (if default-value
@@ -98,6 +99,22 @@ labels or variable declarations in a function body.
            same scope: ~a" it)
          (mapcar #'cons var-names var-types))))
 
+(defun find-spills (code)
+  (mapcar #'second
+          (find-forms (lambda (form)
+                        (match form
+                          ((list 'spill (type number)) t)))
+                      code)))
+
+(defun range* (x) (loop for x from 1 to x collect x))
+
+(defun max-temp-variable (code)
+  (apply #'max (or (find-spills code) '(0))))
+
+(defun find-temp-variables (code)
+  (mapcar (fn1 (cons (%temp !1) 'c::int))
+          (range* (max-temp-variable code))))
+
 (defun find-call-space-requests (code)
   (find-forms #'call-space-request? code))
 
@@ -107,11 +124,55 @@ labels or variable declarations in a function body.
            (maximize (second form)))
          0)))
 
+(defun primitive? (x)
+  (typecase x (symbol t) (number t)
+            (t (match x
+                 ((list 'temp (type number)) t)))))
+
+(defun compound-forms (xs) (remove-if #'primitive? xs))
+(defun all-primitive? (xs)
+  (equalp xs (remove-if-not #'primitive? xs)))
+
+;; TODO Make these unique
+(defun %temp (num) (intern (format nil "tmp~d" num) :s))
+(defmacro temp (num) `(->A ,(%temp num)))
+(defmacro spill (num) `(A-> ,(%temp num)))
+
+(defun replace-compounds-with-temps (forms used-temps)
+  (iter (for form in forms)
+        (if (primitive? form)
+            (collect form)
+            (collect (%temp (incf used-temps))))))
+
+;; TODO This isn't quite right, but it works for now.
+(defun macro? (symbol) (fboundp symbol))
+
+(defun %expr (expr used-temps)
+  (match expr
+    ((type number) `(lda ,expr))
+    ((type symbol) (when expr `(->A ,expr)))
+    ((type string) `(format t "~{~a~}_~a~%" (indent-chars) ,expr))
+    ((list* (as f (type symbol)) args)
+     (cond
+       ((macro? f) expr)
+       ((all-primitive? args)
+        `(c::funcall ,f ,@args))
+       (t `(progn
+             ,@(let ((used-temps used-temps))
+                    (iter (for form in (compound-forms args))
+                          (collect `(expr ,form :used-temps ,used-temps))
+                          (collect `(spill ,(incf used-temps)))))
+             (expr (,f ,@(replace-compounds-with-temps
+                          args used-temps)))))))))
+
+(defmacro expr (expr &key (used-temps 0))
+  (%expr expr used-temps))
+
 (defun transform-expr (expr)
   (cond ((funcall-form? expr) `(c::funcall ,@expr))
-        ((var-ref-form? expr) `(var->A ,expr))
-        ((numberp expr) `(var->A ,expr))
+        ((var-ref-form? expr) `(->A ,expr))
+        ((numberp expr) `(->A ,expr))
         (t expr)))
 
 (defun transform-c-syntax (block)
-  (code-walk #'transform-expr block))
+  (code-walk (fn1 `(expr ,!1)) block))
