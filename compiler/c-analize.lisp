@@ -146,6 +146,9 @@ labels or variable declarations in a function body.
 
 ;; TODO This isn't quite right, but it works for now.
 (defun macro? (symbol) (fboundp symbol))
+(defun operator? (symbol)
+  (member symbol '(c::+ c::- c::^ c::& c::band c::\| c::bor c::$ c::_ c::--
+                   c::@)))
 
 (defun %expr (expr used-temps)
   (match expr
@@ -154,6 +157,8 @@ labels or variable declarations in a function body.
     ((type string) `(format t "~{~a~}_~a~%" (indent-chars) ,expr))
     ((list* (as f (type symbol)) args)
      (cond
+       ((operator? f)
+        (simplify-operator-expr f args used-temps))
        ((macro? f) expr)
        ((all-primitive? args)
         `(c::funcall ,f ,@args))

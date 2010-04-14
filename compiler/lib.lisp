@@ -128,3 +128,20 @@
     `(defmacro ,newname (&body ,forms)
        `(progn
           ,@(mapcar (fn1 (cons ',macro (listify !1))) ,forms)))))
+
+(defun find-index (predicate list)
+  (loop for item in list
+        for index from 0
+        when (& predicate item)
+        return index
+        finally (return nil)))
+
+(defun take (n l)
+  (loop for x below n
+        for i in l
+        collect i))
+
+(defun drop (n l)
+  (loop for x to n
+        for i on l
+        finally (return i)))

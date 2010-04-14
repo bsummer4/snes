@@ -357,7 +357,9 @@ using CL:MACROLET and CL:FLET.
   (declare (ignore return-type))
   (let* ((input-code `(progn ,@code))
          (unique-name (c-fn-unique-name name))
-         (code (preexpand (transform-c-syntax (preexpand input-code))))
+         ;; TODO Are we sure we don't need this inside preexpand.
+         ;;(code (preexpand (transform-c-syntax (preexpand input-code))))
+         (code (preexpand (transform-c-syntax input-code)))
          (needed-call-space (needed-call-space code))
          (vars (append (find-vars code)
                        (find-temp-variables code))))
@@ -382,6 +384,20 @@ using CL:MACROLET and CL:FLET.
   `(with-indent ,(format nil "_~a" name)
      (c::block ,@code)))
 
+
+(defun simplify-operator-expr (operator operands used-temps)
+  (let ((index (find-index (fn1 (not (primitive? !1))) operands)))
+    (if index
+     `(progn
+        (expr ,(nth index operands) :used-temps ,used-temps)
+        (spill ,(1+ used-temps))
+        ,(simplify-operator-expr operator
+                                 `(,@(take index operands)
+                                     ,(%temp (1+ used-temps))
+                                     ,@(drop (1+ index) operands))
+                                 (1+ used-temps)))
+     `(,operator ,@operands))))
+
 (defmacro def-simple-binary-operator (operator mnemonic &key prelude)
   `(defmacro ,operator (operand-1 operand-2)
      `(nice-block ,',(symbol-name operator)
@@ -402,6 +418,10 @@ using CL:MACROLET and CL:FLET.
   (c::band and)
   (c::\| ora)
   (c::bor ora))
+
+(defmacro c::_ (array index)
+  ;; TODO use LDA (?,S),Y
+  `(c::$ (c::+ ,array ,index)))
 
 (defmacro c::++ (var)
   (declare (type symbol var))
