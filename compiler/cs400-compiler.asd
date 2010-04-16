@@ -3,7 +3,7 @@
   :components ((:file "package")
                (:file "lib")
                (:file "macroexpand-dammit")
-               (:file "c-analize")
+               (:file "c-analyze")
                (:file "asm")
                (:file "c"))
   :serial t)
