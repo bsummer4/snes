@@ -350,23 +350,31 @@ using CL:MACROLET and CL:FLET.
          ,@code))))
 
 (defmacro with-return (label &body code)
-  `(with-goto-macrolet c::return ,label ,@code))
+  `(macrolet ((c::return (x)
+                `(progn
+                   (expr ,x)
+                   (c::goto ,',label))))
+     ,@code))
 
+(defun returnify (code)
+  (with-gensyms ((return-label "return"))
+    `(with-return ,return-label
+       ,code
+       (c::label ,return-label))))
 
 (defmacro c::proc ((name return-type) args &body code)
   (declare (ignore return-type))
   (let* ((input-code `(progn ,@code))
          (unique-name (c-fn-unique-name name))
-         ;; TODO Are we sure we don't need this inside preexpand.
-         ;;(code (preexpand (transform-c-syntax (preexpand input-code))))
-         (code (preexpand (transform-c-syntax input-code)))
+         (code (preexpand
+                (transform-c-syntax
+                 (preexpand
+                  (returnify input-code)))))
          (needed-call-space (needed-call-space code))
          (vars (append (find-vars code)
                        (find-temp-variables code))))
     `(with-indent ,(format nil "_function_~s"
                            (intern (symbol-name name)))
-       ;;(with-gensyms (return-label)
-       ;;(with-return ,return-label
        (with-scope ',name
          (asm-code ',unique-name)
          (16-bit-mode)
