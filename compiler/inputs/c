@@ -22,7 +22,7 @@
        color)
     (set_background_color color #x0000)))
 
-(proc (set_background_color void) (color color_address)
+(proc (set_background_color int) (color color_address)
   color_address
   (s::8-bit-mode)
   (s::asm s::sta :absolute #x2121)

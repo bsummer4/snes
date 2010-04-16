@@ -1,7 +1,63 @@
-;; TODO you can define a function argument and a function local
-;; variable with the same name.
+;; TODO you can define a function argument and a local
+;;      variable with the same name.
+;;
+;; TODO Function arguments are not checked.  It should be an error to
+;;      call a function with the wrong number of arguments.
+;;
+;; TODO SIMPLIFY-OPERATOR-EXPR will cause expressions of the form:
+;;          (c::= (...) _)
+;;      to expand into something valid.  However it should be an error
+;;      for the first argument of c::= to be anything except a symbol.
+;;
+;; TODO Operators are macros which can not be preexpanded because they
+;;      need to be simplified first.  However, they must be
+;;      preexpanded because they expand into code that needs to be
+;;      examined.  The current solution is to do the transformations
+;;      before the preexpand, but this makes the code very picky about
+;;      how things are ordered.
+;;
+;;      For example in RETURNIFY, we have to manually preexpand the
+;;      WITH-RETURN form so that it can be walked (we need to walk the
+;;      code to do transformations).  This requirement is ugly as sin.
 
 (in-package #:cs400-compiler)
+
+(defvar *globals* nil)
+
+(defstruct c-variable
+  (address nil         :read-only t :type (or symbol fixnum))
+  (addressing-mode nil :read-only t :type keyword))
+
+(defun c-variable (address addressing-mode)
+  (make-c-variable :address address
+                   :addressing-mode addressing-mode))
+
+(defun get-var (identifier)
+  "Get the c variable visible through IDENTIFIER from the current
+   scope.  This is rebound with cl:FLET upon entering a new lexical
+   scope.  Throws an error if the variable isn't defined.  "
+  (declare (symbol identifier))
+  (aif (assoc identifier *globals*)
+       (cdr it)
+       (error "Undefined Identifier ~a" identifier)))
+
+(defmacro need-call-space (amount)
+  "This is a declaration.  Macros may include this in their output so
+   that it can be scanned for after a PREEXPAND.  "
+  (declare (ignore amount))
+  (values))
+
+
+"## Convience"
+(defmacro ->A (var)
+  `(with-slots (address addressing-mode)
+       (get-var ',var)
+     (asm lda addressing-mode address)))
+
+(defmacro A-> (var)
+  `(with-slots (address addressing-mode)
+       (get-var ',var)
+     (asm sta addressing-mode address)))
 
 "## Scratch Space"
 (defmacro c::funcall (function &rest args)
@@ -22,20 +78,6 @@
              (collect `(asm sta :stack-indexed ,(1- (* 2 i)))))
      (asm jsr :absolute (c-fn-unique-name ',function))))
 
-(defmacro need-call-space (amount)
-  (declare (ignore amount))
-  (values))
-
-;; - TODO These should access global variables.
-;; - TODO The macrolet A-> in a scope should fall through to this
-;;   version if it can't be found.
-(defmacro A-> (var)
-  (declare (ignore var))
-  (error "Code outside of a function!"))
-
-(defmacro ->A (var)
-  (declare (ignore var))
-  (error "Code outside of a function!"))
 
 
 
@@ -54,7 +96,7 @@ using CL:MACROLET and CL:FLET.
   (error "label (~a) statement outside of a function body" name))
 (eval-when (:compile-toplevel :load-toplevel :execute)
     (defun lookup-label (name)
-  (error "Trying to lookup a label (~a) outside of a function body" name)))
+      (error "Trying to lookup a label (~a) outside of a function body" name)))
 
 (defmacro labels-block (&body code)
   "Binds the macros c::goto and c::label to generate branches and asm
@@ -237,14 +279,13 @@ using CL:MACROLET and CL:FLET.
   "This expands into code that declares a global variable.  A separate
    version for stack variables is bound with a MACROLET in
    c::proto.  "
-  (when value (error "Setting variables is not implemented.  "))
-  `(let ((size 2)) ;; replace 2 with (size-of type)
-     (when (in-table? ',name (identifiers-table))
-       (error "More than one declaration of global identifier ~a.  "
-              ',name))
-     (setf (gethash ',name (identifiers-table))
-           (new-var ',name ',type :static
-                    (allocate-global size)))))
+  (declare (ignore type) (type (eql c::int) type))
+  (when value
+    (error "Initializing global variables is not implemented.  "))
+  `(if (assoc ',name *globals*)
+       (error "Redefining variable: ~a" ',name)
+       (push (cons ',name (c-variable (allocate-global 2) :absolute))
+             *globals*)))
 
 
 
@@ -312,21 +353,12 @@ using CL:MACROLET and CL:FLET.
    SET to read from and write to a variable by name.  "
   (with-gensyms (stack-space)
     `(let ((,stack-space ,variable-spaces))
-       (flet ((var-addr-mode (varname)
-                (declare (ignore varname))
-                :stack-indexed)
-              (var-addr (varname)
-                (elookup varname ,stack-space)))
-         (macrolet ((->A (var)
-                      (etypecase var
-                        (symbol `(asm lda (var-addr-mode ',var)
-                                      (var-addr ',var)))
-                        (number `(lda ,var))))
-                    (A-> (var)
-                      `(asm sta (var-addr-mode ',var)
-                            (var-addr ',var)))
-                    (c::var (name type &optional value)
-                      (declare (ignore type))
+       (flet ((get-var (identifier)
+                (aif (assoc identifier ,stack-space)
+                     (c-variable (cdr it) :stack-indexed)
+                     (get-var identifier))))
+         (macrolet ((c::var (name type &optional value)
+                      (assert (eq type 'c::int))
                       (when value
                         `(progn
                            (lda ,value)
@@ -351,25 +383,24 @@ using CL:MACROLET and CL:FLET.
 
 (defmacro with-return (label &body code)
   `(macrolet ((c::return (x)
-                `(progn
-                   (expr ,x)
-                   (c::goto ,',label))))
+                `(progn (expr ,x) (c::goto ,',label))))
      ,@code))
 
 (defun returnify (code)
   (with-gensyms ((return-label "return"))
-    `(with-return ,return-label
-       ,code
-       (c::label ,return-label))))
+    (macroexpand ;; TODO HACK see long comment at the top of the file.
+     `(with-return ,return-label
+        ,code
+        (c::label ,return-label)))))
 
 (defmacro c::proc ((name return-type) args &body code)
-  (declare (ignore return-type))
+  (declare (type (eql c::int) return-type)
+           (ignore return-type))
   (let* ((input-code `(progn ,@code))
          (unique-name (c-fn-unique-name name))
          (code (preexpand
                 (transform-c-syntax
-                 (preexpand
-                  (returnify input-code)))))
+                 (returnify input-code))))
          (needed-call-space (needed-call-space code))
          (vars (append (find-vars code)
                        (find-temp-variables code))))
@@ -410,10 +441,13 @@ using CL:MACROLET and CL:FLET.
   `(defmacro ,operator (operand-1 operand-2)
      `(nice-block ,',(symbol-name operator)
         ,',prelude
-        (->A ,operand-1)
+        ,(etypecase operand-1
+           (symbol `(->A ,operand-1))
+           (number `(lda ,operand-1)))
         ,(etypecase operand-2
-           (symbol `(asm ,',mnemonic (var-addr-mode ',operand-2)
-                         (var-addr ',operand-2)))
+           (symbol `(with-slots (address addressing-mode)
+                        (get-var ',operand-2)
+                      (asm ,',mnemonic addressing-mode address)))
            (number `(asm ,',mnemonic :immediate-w ,operand-2))))))
 
 (pluralize-macro def-simple-binary-operator def-simple-binary-operators)
@@ -433,10 +467,17 @@ using CL:MACROLET and CL:FLET.
 
 (defmacro c::++ (var)
   (declare (type symbol var))
-  `(c::block
+  `(progn
     (->A ,var)
     (asm inc :accumulator)
     (A-> ,var)))
+
+(defmacro c::= (variable value)
+  `(progn
+     ,(etypecase value
+        (symbol `(->A ,value))
+        (number `(lda ,value)))
+     (A-> ,variable)))
 
 (defmacro c::-- (var)
   `(c::block

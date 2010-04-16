@@ -24,6 +24,22 @@ labels or variable declarations in a function body.
           `(list ',var ',name ',type ',default-value)
           `(list ',var ',name ',type))))
 
+;; # Hack
+;; This causes a stack overflow (maybe a bug in macroexpand-dammit).
+;;
+;;     (preexpand '(symbol-macrolet ((x (slot-value g 'x)))
+;;                    (list x)))
+;;
+;; We generate code of this form when we use with-slots; To get around
+;; this we use the following hack.  This is a bad hack, though because
+;; we better not generate anything important withing a with-slots
+;; form.  (We currently don't).
+(macroexpand-dammit::defhandler with-slots
+    (with-slots slots instance &rest body)
+  `(list ',with-slots ',slots ',instance ',@body))
+
+
+
 (defun preexpand (expr)
   (macroexpand-dammit:macroexpand-dammit expr))
 
@@ -148,7 +164,7 @@ labels or variable declarations in a function body.
 (defun macro? (symbol) (fboundp symbol))
 (defun operator? (symbol)
   (member symbol '(c::+ c::- c::^ c::& c::band c::\| c::bor c::$ c::_ c::--
-                   c::@)))
+                   c::@ c::=)))
 
 (defun %expr (expr used-temps)
   (match expr
@@ -165,7 +181,7 @@ labels or variable declarations in a function body.
        (t `(progn
              ,@(let ((used-temps used-temps))
                     (iter (for form in (compound-forms args))
-                          (collect `(expr ,form :used-temps ,used-temps))
+                          (collect (%expr form used-temps))
                           (collect `(spill ,(incf used-temps)))))
              (expr (,f ,@(replace-compounds-with-temps
                           args used-temps)))))))))
