@@ -1,3 +1,5 @@
+(defmacro c::++ (x) `(c-++ ,x))
+
 (in-package :c)
 
 (s::emit "#LoROM")

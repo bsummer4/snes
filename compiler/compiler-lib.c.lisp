@@ -1,5 +1,5 @@
 "## Compiler Defined C-Code"
-(c::subroutine c::reset
+(c-subroutine c::reset
   (asm clc :implied)
   (asm xce :implied)
   (16-bit-mode)

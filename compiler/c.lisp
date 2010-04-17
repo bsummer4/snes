@@ -4,7 +4,7 @@
 (in-package #:cs400-compiler)
 
 "## Scratch Space"
-(defmacro c::funcall (function &rest args)
+(defmacro c-funcall (function &rest args)
   (dolist (a args) (assert (or (symbolp a) (numberp a))))
   ;; TODO This is just for testing; it doesn't do anything.
   ;(format *error-output* "~%funcall: ~a(~{~a~^, ~})~%~%" function args)
@@ -46,18 +46,18 @@
 These macros and functions will be rebound as needed in other macros
 using CL:MACROLET and CL:FLET.
 "
-(defmacro c::continue () (error "continue statement not within a loop"))
-(defmacro c::break () (error "break statement not within a loop or switch"))
-(defmacro c::goto (label)
+(defmacro c-continue () (error "continue statement not within a loop"))
+(defmacro c-break () (error "break statement not within a loop or switch"))
+(defmacro c-goto (label)
   (error "goto (~a) statement outside of a function body" label))
-(defmacro c::label (name)
+(defmacro c-label (name)
   (error "label (~a) statement outside of a function body" name))
 (eval-when (:compile-toplevel :load-toplevel :execute)
     (defun lookup-label (name)
   (error "Trying to lookup a label (~a) outside of a function body" name)))
 
 (defmacro labels-block (&body code)
-  "Binds the macros c::goto and c::label to generate branches and asm
+  "Binds the macros c-goto and c-label to generate branches and asm
    labels.  "
   (let ((code (preexpand
                (transform-c-syntax
@@ -68,26 +68,26 @@ using CL:MACROLET and CL:FLET.
                   (or (lookup label ,labels)
                       (error "Undefined label ~a" label))))
            (declare (ignorable #'lookup-label))
-           (macrolet ((c::goto (label)
+           (macrolet ((c-goto (label)
                         (declare (type symbol label))
                         `(%goto (lookup-label ',label)))
-                      (c::label (name)
+                      (c-label (name)
                         `(%label (lookup-label ',name))))
              ,code))))))
 
 (defmacro with-goto-macrolet (macro-name label &body code)
-  `(macrolet ((,macro-name () `(c::goto ,',label)))
+  `(macrolet ((,macro-name () `(c-goto ,',label)))
      ,@code))
 
 (defmacro with-continue (continue-label &body code)
-  `(with-goto-macrolet c::continue ,continue-label ,@code))
+  `(with-goto-macrolet c-continue ,continue-label ,@code))
 
 (defmacro with-break (break-label &body code)
-  `(with-goto-macrolet c::break ,break-label ,@code))
+  `(with-goto-macrolet c-break ,break-label ,@code))
 
 
 "## Control Strutures"
-(defmacro c::if (test then-form &optional else-form)
+(defmacro c-if (test then-form &optional else-form)
   (with-gensyms ((else "iflabel_else_") (end "iflabel_end_"))
     `(with-indent "_if"
        ,test
@@ -95,42 +95,42 @@ using CL:MACROLET and CL:FLET.
                         ',(if else-form else end)))
        (with-indent "_if_then_form"
          ,then-form)
-       ,(when else-form `(c::goto ,end))
-       ,(when else-form `(c::label ,else))
+       ,(when else-form `(c-goto ,end))
+       ,(when else-form `(c-label ,else))
        (with-indent "_if_else_form"
          ,else-form)
-       (c::label ,end))))
+       (c-label ,end))))
 
-(defmacro c::while (test &body body)
+(defmacro c-while (test &body body)
   (with-gensyms ((top "while_label_top") (end "while_label_end"))
     `(with-break ,end
        (with-continue ,top
          (with-indent "_while"
-           (c::label ,top)
-           (c::if ,test
+           (c-label ,top)
+           (c-if ,test
                   (with-indent "_while_body"
                     ,@body
-                    (c::goto ,top)))
-           (c::label ,end))))))
+                    (c-goto ,top)))
+           (c-label ,end))))))
 
-(defmacro c::for ((setup test iterate) &body body)
+(defmacro c-for ((setup test iterate) &body body)
   `(with-indent _for
      ,setup
-     (c::while ,test
+     (c-while ,test
        ,@body
        ,iterate)))
 
-(defmacro c::do-while (test &body body)
+(defmacro c-do-while (test &body body)
   (with-gensyms ((top "dowhile_label_repeat")
                  (end "dowhile_label_end"))
     `(with-break ,end
        (with-continue ,top
          (with-indent "_do_while"
-           (c::label ,top)
+           (c-label ,top)
            (with-indent "_do_while_body"
              ,@body)
-           (c::if ,test (c::goto ,top))
-           (c::label ,end))))))
+           (c-if ,test (c-goto ,top))
+           (c-label ,end))))))
 
 "### Switch"
 (eval-when (:compile-toplevel :load-toplevel :execute)
@@ -146,13 +146,13 @@ using CL:MACROLET and CL:FLET.
 
  (defun make-switch-jump-entry (value target)
    (if (eq value 'default)
-       `(c::goto ,target)
+       `(c-goto ,target)
        `(progn
           (asm cmp :immediate-w ,value)
           (emit (format nil "BEQ {~a}" ',target)))))
 
  (defun make-switch-target (target code)
-   `(progn (c::label ,target) ,code))
+   `(progn (c-label ,target) ,code))
 
  (defun switch-default-hack (jumps break-label)
    "The 'default' case must be 'goto'ed at the end of jump clauses, but
@@ -161,12 +161,12 @@ using CL:MACROLET and CL:FLET.
    moves it to the end.  "
    (multiple-value-bind (defaults numbers)
        (lpartition (lambda (jump-form)
-                     (eq 'c::goto (first jump-form)))
+                     (eq 'c-goto (first jump-form)))
                    jumps)
      (append numbers (or defaults
-                         `((c::goto ,break-label)))))))
+                         `((c-goto ,break-label)))))))
 
-(defmacro c::switch (expr &body cases)
+(defmacro c-switch (expr &body cases)
   "The output is
      - Each test in the order given a single test is of the form:
            (CMP num BEQ case_label)
@@ -185,9 +185,9 @@ using CL:MACROLET and CL:FLET.
                 switch_end))
            (with-indent _switch_targets
              ,@(mapcar #'make-switch-target labels codes))
-           (c::label ,switch_end))))))
+           (c-label ,switch_end))))))
 
-(defmacro c::block (&body code)
+(defmacro c-block (&body code)
   `(progn ,@code))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
@@ -233,10 +233,10 @@ using CL:MACROLET and CL:FLET.
       *next-available-global-space*
       (incf *next-available-global-space* size)))
 
-(defmacro c::var (name type &optional value)
+(defmacro c-var (name type &optional value)
   "This expands into code that declares a global variable.  A separate
    version for stack variables is bound with a MACROLET in
-   c::proto.  "
+   c-proto.  "
   (when value (error "Setting variables is not implemented.  "))
   `(let ((size 2)) ;; replace 2 with (size-of type)
      (when (in-table? ',name (identifiers-table))
@@ -249,7 +249,7 @@ using CL:MACROLET and CL:FLET.
 
 
 "## Functions and Subrountines"
-(defmacro c::subroutine (name &body code)
+(defmacro c-subroutine (name &body code)
   "This is like #'C-FN except it doesn't do any stack manipulation so no
    variables, etc.  The only really supported constructs are labels
    and gotos.  'NAME will **not** be mangled, so make sure it's what
@@ -276,7 +276,7 @@ using CL:MACROLET and CL:FLET.
                 already-bound?
                 (not (prototype? fn)))))))
 
-(defmacro c::proto (name)
+(defmacro c-proto (name)
   "Binds a unique name to the function 'NAME in the global scope.
    This allows us to reference functions in asm code that haven't been
    defined yet.  Return the unique name.  "
@@ -308,7 +308,7 @@ using CL:MACROLET and CL:FLET.
                 (asm tcs :implied)))))
 
 (defmacro with-stack-lookup-macros (variable-spaces &body code)
-  "Binds C::VAR to set the variable if given a value and binds REF and
+  "Binds c-VAR to set the variable if given a value and binds REF and
    SET to read from and write to a variable by name.  "
   (with-gensyms (stack-space)
     `(let ((,stack-space ,variable-spaces))
@@ -325,7 +325,7 @@ using CL:MACROLET and CL:FLET.
                     (A-> (var)
                       `(asm sta (var-addr-mode ',var)
                             (var-addr ',var)))
-                    (c::var (name type &optional value)
+                    (c-var (name type &optional value)
                       (declare (ignore type))
                       (when value
                         `(progn
@@ -350,10 +350,10 @@ using CL:MACROLET and CL:FLET.
          ,@code))))
 
 (defmacro with-return (label &body code)
-  `(with-goto-macrolet c::return ,label ,@code))
+  `(with-goto-macrolet c-return ,label ,@code))
 
 
-(defmacro c::proc ((name return-type) args &body code)
+(defmacro c-proc ((name return-type) args &body code)
   (declare (ignore return-type))
   (let* ((input-code `(progn ,@code))
          (unique-name (c-fn-unique-name name))
@@ -380,7 +380,7 @@ using CL:MACROLET and CL:FLET.
 "## Operators"
 (defmacro nice-block (name &body code)
   `(with-indent ,(format nil "_~a" name)
-     (c::block ,@code)))
+     (c-block ,@code)))
 
 (defmacro def-simple-binary-operator (operator mnemonic &key prelude)
   `(defmacro ,operator (operand-1 operand-2)
@@ -395,28 +395,28 @@ using CL:MACROLET and CL:FLET.
 (pluralize-macro def-simple-binary-operator def-simple-binary-operators)
 
 (def-simple-binary-operators
-  (c::+ adc :prelude (asm clc :implied))
-  (c::- sbc :prelude (asm sec :implied))
-  (c::^ eor)
-  (c::& and)
-  (c::band and)
-  (c::\| ora)
-  (c::bor ora))
+  (c-+ adc :prelude (asm clc :implied))
+  (c-- sbc :prelude (asm sec :implied))
+  (c-^ eor)
+  (c-& and)
+  (c-band and)
+  (c-\| ora)
+  (c-bor ora))
 
-(defmacro c::++ (var)
+(defmacro c-++ (var)
   (declare (type symbol var))
-  `(c::block
+  `(c-block
     (->A ,var)
     (asm inc :accumulator)
     (A-> ,var)))
 
-(defmacro c::-- (var)
-  `(c::block
+(defmacro c--- (var)
+  `(c-block
      (->A ,var)
      (asm dec :accumulator)
      (A-> ,var)))
 
-(defmacro c::@ (operand)
+(defmacro c-@ (operand)
   "Address of a variable"
   (declare (type symbol operand))
   `(nice-block ,(format nil "address_of_~a" operand)
@@ -427,7 +427,7 @@ using CL:MACROLET and CL:FLET.
        (asm adc :immediate-w (var-addr ',operand)))
       (:absolute (var-addr ',operand)))))
 
-(defmacro c::$ (operand)
+(defmacro c-$ (operand)
   "Pointer dereference.  "
   `(nice-block 'dereference
      (->A ,operand)
@@ -457,23 +457,73 @@ using CL:MACROLET and CL:FLET.
     (repl)))
 
 #|
-(c::proc c::main ()
-  (c::var c::x c::int 1)
-  (c::var c::y c::int 2)
-  c::x
-  (A-> c::y)
-  (c::while c::x (lda 0) (A-> c::x))
-  (c::f c::x)
-  (c::while c::y
-    (c::switch c::x
-      (3 (c::block (lda 1)
-           (A-> c::x)))
-      (4) (5) (6) (7) (8) (9 (c::block
+(c-proc c-main ()
+  (c-var c-x c-int 1)
+  (c-var c-y c-int 2)
+  c-x
+  (A-> c-y)
+  (c-while c-x (lda 0) (A-> c-x))
+  (c-f c-x)
+  (c-while c-y
+    (c-switch c-x
+      (3 (c-block (lda 1)
+           (A-> c-x)))
+      (4) (5) (6) (7) (8) (9 (c-block
                                  (lda 0)
-                               (A-> c::x)))
-      (default (c::block
-                   (lda 1) (A-> c::y)
-                   (c::break)))
-      (10 (c::continue))))
-  c::y)
+                               (A-> c-x)))
+      (default (c-block
+                   (lda 1) (A-> c-y)
+                   (c-break)))
+      (10 (c-continue))))
+  c-y)
 |#
+
+"
+# Syntax Analysis
+
+The purpose of these macros is to handle funky syntax and to make the
+job of later transformations eaiser.  The following rules apply to
+code in this file:
+1. No macro may perform non-trivial transformations.
+2. No knowledge of the target architecture is allowed.
+3. (Possibly) only target macros defined in :CL and :IR.
+"
+
+(in-package #:cs400-compiler)
+
+(defmacro c::goto (label) `(c-goto ,label))
+(defmacro c::label (name) `(c-label ,name))
+
+(defmacro c::continue () `(c-continue))
+(defmacro c::break () `(c-break))
+(defmacro c::return (expr) `(c-return ,expr))
+
+(defmacro c::proto (name) `(c-proto ,name))
+(defmacro c::proc ((name return-type) args &body code)
+  (declare (symbol return-type name) (list args))
+  `(c-proc (,name ,return-type) ,args ,@code))
+
+(defmacro c::var (name type &optional value)
+  (declare (symbol name type))
+  (if value
+      `(c-var ,name ,type ,value)
+      `(c-var ,name ,type)))
+
+(defmacro c::block (&body code) `(c-block ,@code))
+(defmacro c::if (test then-form &optional else-form)
+  (if else-form
+      `(c-if ,test ,then-form ,else-form)
+      `(c-if ,test ,then-form)))
+
+(defmacro c::while (test &body body)
+  `(c-while ,test ,@body))
+
+(defmacro c::do-while (test &body body)
+  `(c-do-while ,test ,@body))
+
+(defmacro c::for ((setup test iterate) &body body)
+  `(c-for (,setup ,test ,iterate) ,@body))
+
+(defmacro c::switch (expr &body cases) `(c-switch ,expr ,@cases))
+
+; '(c::+ c::- c::^ c::& c::band c::\| c::bor c::_ c::++ c::-- c::@ c::$)

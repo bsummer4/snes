@@ -10,16 +10,16 @@ labels or variable declarations in a function body.
 
 (macrolet ((dh (n fs &body code)
              `(macroexpand-dammit::defhandler ,n ,fs ,@code)))
-  "We tell macroexpand-dammit not to expand c::label c::goto c::var
+  "We tell macroexpand-dammit not to expand c-label c-goto c-var
      ->A or A->, since we need to scan code-bodies for these (or
      because we want rebind them in a macrolet after preexpansion).  "
-  (dh c::label (label name) `(list ',label ',name))
-  (dh c::goto (goto name) `(list ',goto ',name))
+  (dh c-label (label name) `(list ',label ',name))
+  (dh c-goto (goto name) `(list ',goto ',name))
   (dh A-> (set var) `(list ',set ',var))
   (dh ->A (ref var) `(list ',ref ',var))
   (dh spill (ref var) `(list ',ref ',var))
   (dh need-call-space (macro-name amount) `(list ',macro-name ',amount))
-  (dh c::var (var name type &optional default-value)
+  (dh c-var (var name type &optional default-value)
       (if default-value
           `(list ',var ',name ',type ',default-value)
           `(list ',var ',name ',type))))
@@ -72,11 +72,11 @@ labels or variable declarations in a function body.
   (match expr
     ((type symbol) (c-symbol? expr))))
 
-(defun label-form? (expr) (match? (list 'c::label symbol) expr))
+(defun label-form? (expr) (match? (list 'c-label symbol) expr))
 (defun var-form? (expr)
   (match expr
-    ((list 'c::var (type symbol) (type symbol)) t)
-    ((list 'c::var (type symbol) (type symbol) (type number)) t)))
+    ((list 'c-var (type symbol) (type symbol)) t)
+    ((list 'c-var (type symbol) (type symbol) (type number)) t)))
 
 (defun find-labels (code)
   "Returns all label names in the code block.  If a label is multiply
@@ -112,7 +112,7 @@ labels or variable declarations in a function body.
   (apply #'max (or (find-spills code) '(0))))
 
 (defun find-temp-variables (code)
-  (mapcar (fn1 (cons (%temp !1) 'c::int))
+  (mapcar (fn1 (cons (%temp !1) 'c-int))
           (range* (max-temp-variable code))))
 
 (defun find-call-space-requests (code)
@@ -156,7 +156,7 @@ labels or variable declarations in a function body.
      (cond
        ((macro? f) expr)
        ((all-primitive? args)
-        `(c::funcall ,f ,@args))
+        `(c-funcall ,f ,@args))
        (t `(progn
              ,@(let ((used-temps used-temps))
                     (iter (for form in (compound-forms args))
@@ -169,7 +169,7 @@ labels or variable declarations in a function body.
   (%expr expr used-temps))
 
 (defun transform-expr (expr)
-  (cond ((funcall-form? expr) `(c::funcall ,@expr))
+  (cond ((funcall-form? expr) `(c-funcall ,@expr))
         ((var-ref-form? expr) `(->A ,expr))
         ((numberp expr) `(->A ,expr))
         (t expr)))
