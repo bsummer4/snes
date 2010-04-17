@@ -11,12 +11,10 @@ compiler: asm.lisp c.lisp compiler.lisp lib.lisp package.lisp Makefile
              --eval "(defvar *script?* nil)" \
              --script "compiler.lisp"
 
-c.asm: inputs/c compiler; $(CC) < $< > $@
-colors.asm: inputs/colors.asm compiler; cp $< $@
-test: c.asm colors.asm $(ASM)
-	$(ASM) colors.asm
-	$(ASM) c.asm
+c.asm: inputs/c $(CC); $(CC) < $< > $@
+colors.asm: inputs/colors.asm; cp $< $@
 
-colors: test; snes9x colors.smc
-c: test; snes9x c.smc
-run: c colors
+%.smc: %.asm $(ASM); $(ASM) $<
+
+colors: colors.smc; snes9x colors.smc
+c: c.smc; snes9x c.smc
