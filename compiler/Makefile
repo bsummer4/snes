@@ -6,7 +6,7 @@ clean:; rm -f *.fasl *.asm *.smc *~ compiler
 install: compiler; ln -f compiler ~/bin/scc
 
 ../assembler/65816asm:; cd ../assembler; make
-compiler: asm.lisp c.lisp compiler.lisp lib.lisp package.lisp Makefile
+compiler: asm.lisp c.lisp c-impl.lisp compiler.lisp lib.lisp package.lisp Makefile
 	sbcl --noinform \
              --eval "(defvar *script?* nil)" \
              --script "compiler.lisp"
