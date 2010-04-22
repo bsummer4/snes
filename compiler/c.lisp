@@ -20,13 +20,15 @@ Here are the transformations that we do:
 
 (in-package #:cs400-compiler)
 
+(defmacro with-break (break-label &body code)
+  `(with-goto-macrolet c::break ,break-label ,@code))
+
+(defmacro with-continue (continue-label &body code)
+  `(with-goto-macrolet c::continue ,continue-label ,@code))
+
+
 (defmacro c::goto (label) `(c-goto ,label))
 (defmacro c::label (name) `(c-label ,name))
-
-(defmacro c::continue () `(c-continue))
-(defmacro c::break () `(c-break))
-(defmacro c::return (expr) `(c-return ,expr))
-
 (defmacro c::proto (name) `(c-proto ,name))
 (defmacro c::proc ((name return-type) args &body code)
   (declare (symbol return-type name) (list args))
@@ -52,13 +54,35 @@ Here are the transformations that we do:
        (c::label ,end))))
 
 (defmacro c::while (test &body body)
-  `(c-while ,test ,@body))
+  (with-gensyms ((top "while_label_top") (end "while_label_end"))
+    `(with-break ,end
+       (with-continue ,top
+         (with-indent "_while"
+           (c::label ,top)
+           (c::if ,test
+                  (with-indent "_while_body"
+                    ,@body
+                    (c::goto ,top)))
+           (c::label ,end))))))
 
 (defmacro c::do-while (test &body body)
-  `(c-do-while ,test ,@body))
+  (with-gensyms ((top "dowhile_label_repeat")
+                 (end "dowhile_label_end"))
+    `(with-break ,end
+       (with-continue ,top
+         (with-indent "_do_while"
+           (c::label ,top)
+           (with-indent "_do_while_body"
+             ,@body)
+           (c::if ,test (c::goto ,top))
+           (c::label ,end))))))
 
 (defmacro c::for ((setup test iterate) &body body)
-  `(c-for (,setup ,test ,iterate) ,@body))
+  `(with-indent _for
+     ,setup
+     (c::while ,test
+       ,@body
+       ,iterate)))
 
 (defmacro c::switch (expr &body cases) `(c-switch ,expr ,@cases))
 

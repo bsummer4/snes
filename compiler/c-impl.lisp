@@ -75,51 +75,11 @@ using CL:MACROLET and CL:FLET.
                         `(%label (lookup-label ',name))))
              ,code))))))
 
-(defmacro with-goto-macrolet (macro-name label &body code)
-  `(macrolet ((,macro-name () `(c-goto ,',label)))
-     ,@code))
-
-(defmacro with-continue (continue-label &body code)
-  `(with-goto-macrolet c-continue ,continue-label ,@code))
-
-(defmacro with-break (break-label &body code)
-  `(with-goto-macrolet c-break ,break-label ,@code))
-
-
 "## Control Strutures"
 (defmacro c-goto-<if-zero> (label)
   `(%branch-if-not (lookup-label ',label)))
 
-(defmacro c-while (test &body body)
-  (with-gensyms ((top "while_label_top") (end "while_label_end"))
-    `(with-break ,end
-       (with-continue ,top
-         (with-indent "_while"
-           (c-label ,top)
-           (c::if ,test
-                  (with-indent "_while_body"
-                    ,@body
-                    (c-goto ,top)))
-           (c-label ,end))))))
 
-(defmacro c-for ((setup test iterate) &body body)
-  `(with-indent _for
-     ,setup
-     (c-while ,test
-       ,@body
-       ,iterate)))
-
-(defmacro c-do-while (test &body body)
-  (with-gensyms ((top "dowhile_label_repeat")
-                 (end "dowhile_label_end"))
-    `(with-break ,end
-       (with-continue ,top
-         (with-indent "_do_while"
-           (c-label ,top)
-           (with-indent "_do_while_body"
-             ,@body)
-           (c::if ,test (c-goto ,top))
-           (c-label ,end))))))
 
 "### Switch"
 (always-eval
@@ -488,15 +448,19 @@ using CL:MACROLET and CL:FLET.
   (with-open-file (*standard-input* file)
     (repl)))
 
+(defmacro with-goto-macrolet (macro-name label &body code)
+  `(macrolet ((,macro-name () `(c::goto ,',label)))
+     ,@code))
+
 #|
 (c-proc c-main ()
   (c-var c-x c-int 1)
   (c-var c-y c-int 2)
   c-x
   (A-> c-y)
-  (c-while c-x (lda 0) (A-> c-x))
+  (c::while c-x (lda 0) (A-> c-x))
   (c-f c-x)
-  (c-while c-y
+  (c::while c-y
     (c-switch c-x
       (3 (c-block (lda 1)
            (A-> c-x)))
