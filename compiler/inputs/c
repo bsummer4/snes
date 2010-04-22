@@ -1,8 +1,7 @@
-(defmacro c::++ (x) `(c-++ ,x))
+(cl:defmacro c::++ (x) `(c-++ ,x))
+(cl:in-package :c)
 
-(in-package :c)
-
-(s::emit "#LoROM")
+[#LoROM]
 
 (proto set_background_color)
 
@@ -36,3 +35,26 @@
   (s::asm s::xba :implied)
   (s::asm s::sta :absolute #x2122)
   (s::16-bit-mode))
+
+(cl:in-package :s)
+
+[#File reset.asm]
+
+(interrupt-handler :reset
+  [SEI]
+  [CLC]
+  [XCE]
+  [REP #$38]
+  [PHK]
+  [LDA #$0000]
+  [TCD]
+  [LDX #$1FFF]
+  [TXS]
+  [LDA #$0000] [TAX] [TAY]
+  [JSR Reset.Registers]
+  [JSR Reset.VRAM]
+  [JSR Reset.OAM]
+  [JSR Reset.CGRAM]
+  (c-funcall c::main))
+
+(vector-table)

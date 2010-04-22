@@ -18,7 +18,6 @@ loading this file.  Otherwise we simply run the c-compiler as script.
   (declare (ignore args))
   (repl)
   (cl:in-package :cs400-compiler)
-  (compile-c "/home/ben/repositories/cs400/compiler/compiler-lib.c.lisp")
   0)
 
 (defun top ()

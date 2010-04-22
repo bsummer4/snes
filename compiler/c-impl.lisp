@@ -352,8 +352,6 @@ using CL:MACROLET and CL:FLET.
                        (find-temp-variables code))))
     `(with-indent ,(format nil "_function_~s"
                            (intern (symbol-name name)))
-       ;;(with-gensyms (return-label)
-       ;;(with-return ,return-label
        (with-scope ',name
          (asm-code ',unique-name)
          (16-bit-mode)
@@ -364,7 +362,6 @@ using CL:MACROLET and CL:FLET.
                               *global-scope*)
              ,code))
          (asm rts :implied)))))
-
 
 "## Operators"
 (defmacro nice-block (name &body code)
@@ -422,6 +419,50 @@ using CL:MACROLET and CL:FLET.
      (->A ,operand)
      (asm sta :immediate-w 00)
      (asm lda :direct-indirect 00)))
+
+
+"## Interrupt Handling"
+
+(defvar *defined-interrupt-handlers* nil)
+(defvar *reset-table-written?* nil)
+(defconstant +interrupts+ '(:reset :irq :bk :cop :abort :nmi))
+(defconstant +interrupt-handler-positions+
+  '("$80 $FE" :empty :cop   :brk   :abort :nmi   :empty :irq
+    :empty    :empty :empty :empty :empty :empty :reset :empty))
+
+(deftype interrupt-handler-name () (cons 'member +interrupts+))
+
+(defun get-interrupt-name (name)
+  (declare (type interrupt-handler-name name))
+  (symbol-name name))
+
+(defun vector-table ()
+  (unless (member :reset *defined-interrupt-handlers*)
+    (error "You must have a handler for the reset interrupt.  "))
+  (emit (format nil
+                "#Data $00:FFE0 interrupt_vector {~{~a~^~%~a~}}"
+                (iter (for interrupt in +interrupt-handler-positions+)
+                      (collect
+                          (cond
+                            ((stringp interrupt)
+                             interrupt)
+                            ((member interrupt *defined-interrupt-handlers*)
+                             (get-interrupt-name interrupt))
+                            (t "$FFE0")))
+                      (collect "                                   ")))))
+
+(defmacro interrupt-handler (name &body code)
+  (declare (type interrupt-handler-name name))
+  (let* ((unique-name (get-interrupt-name name)))
+    (if (member name *defined-interrupt-handlers*)
+        (error "Multiple definitions of interrupt-handler ~a"
+               unique-name)
+        (push name *defined-interrupt-handlers*))
+    `(labels-block
+       (asm-code ',name)
+       ,@code
+       [RTI])))
+
 
 "## Testing"
 (defun repl ()

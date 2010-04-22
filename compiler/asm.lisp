@@ -80,8 +80,7 @@
 (defun asm-code (symbol &key (prototype nil))
   (emit
    (format nil (if prototype "#Code w ~a" "#Code w {~a}")
-           (string-downcase
-            (symbol-name symbol)))))
+           (symbol-name symbol))))
 
 (defmacro 16-bit-mode () `(asm rep :immediate #x30))
 (defmacro 8-bit-mode () `(asm sep :immediate #x30))
