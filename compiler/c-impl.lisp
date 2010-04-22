@@ -387,8 +387,8 @@ using CL:MACROLET and CL:FLET.
 
 (defvar *defined-interrupt-handlers* nil)
 (defvar *reset-table-written?* nil)
-(defconstant +interrupts+ '(:reset :irq :bk :cop :abort :nmi))
-(defconstant +interrupt-handler-positions+
+(define-constant +interrupts+ '(:reset :irq :bk :cop :abort :nmi))
+(define-constant +interrupt-handler-positions+
   '("$80 $FE" :empty :cop   :brk   :abort :nmi   :empty :irq
     :empty    :empty :empty :empty :empty :empty :reset :empty))
 
@@ -437,6 +437,8 @@ using CL:MACROLET and CL:FLET.
   "For convience at the lisp repl; Clears out the global scope
    effectively destroying everything the compiler has definied.  "
   (clrhash (scope-identifiers *global-scope*))
+  (setf *reset-table-written?* nil)
+  (setf *defined-interrupt-handlers* nil)
   (clrhash (scope-tags *global-scope*)))
 
 (defun interactive-compiler-test (file)

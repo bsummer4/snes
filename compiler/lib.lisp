@@ -136,3 +136,7 @@
     `(defmacro ,newname (&body ,forms)
        `(progn
           ,@(mapcar (fn1 (cons ',macro (listify !1))) ,forms)))))
+
+(defmacro define-constant (name value &optional doc)
+  `(defconstant ,name (if (boundp ',name) (symbol-value ',name) ,value)
+     ,@(when doc (list doc))))
