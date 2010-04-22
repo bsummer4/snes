@@ -35,7 +35,15 @@
 
 (defun proper-set? (list) (null (non-unique-items list)))
 
+
 ;; Macros
+(defmacro always-eval (&body code)
+  "Wrap function definitions in this if the function is used by a
+   macro definied in the same file. macros defined in the same
+   file. "
+  `(eval-when (:compile-toplevel :load-toplevel :execute)
+     ,@code))
+
 (defmacro aif (form then &optional else)
   `(let ((it ,form))
      ,(if else

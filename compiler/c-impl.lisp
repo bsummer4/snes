@@ -52,7 +52,7 @@ using CL:MACROLET and CL:FLET.
   (error "goto (~a) statement outside of a function body" label))
 (defmacro c-label (name)
   (error "label (~a) statement outside of a function body" name))
-(eval-when (:compile-toplevel :load-toplevel :execute)
+(always-eval
     (defun lookup-label (name)
   (error "Trying to lookup a label (~a) outside of a function body" name)))
 
@@ -122,7 +122,7 @@ using CL:MACROLET and CL:FLET.
            (c-label ,end))))))
 
 "### Switch"
-(eval-when (:compile-toplevel :load-toplevel :execute)
+(always-eval
  (defun switch-case-values (cases) (mapcar #'first cases))
  (defun switch-case-codes (cases) (mapcar #'second cases))
  (defun gen-switch-label (value)
@@ -176,10 +176,12 @@ using CL:MACROLET and CL:FLET.
              ,@(mapcar #'make-switch-target labels codes))
            (c-label ,switch_end))))))
 
+
+
 (defmacro c-block (&body code)
   `(progn ,@code))
 
-(eval-when (:compile-toplevel :load-toplevel :execute)
+(always-eval
   "## Scopes and their identifiers and tags.  "
   (defstruct scope
     "The point of giving scopes names is to help generate better error
@@ -251,7 +253,7 @@ using CL:MACROLET and CL:FLET.
        ,@code
        (asm rts :implied))))
 
-(eval-when (:compile-toplevel :load-toplevel :execute)
+(always-eval
   (defun c-fn-unique-name (symbol)
     "Returns a unique name for a function or a suggested unique-name.
      Also returns whether the function was already bound and whether
