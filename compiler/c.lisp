@@ -84,6 +84,60 @@ Here are the transformations that we do:
        ,@body
        ,iterate)))
 
-(defmacro c::switch (expr &body cases) `(c-switch ,expr ,@cases))
+"## Switches"
+(always-eval
+ (defun gen-switch-label (value)
+   (match value
+     ((type fixnum) (gensym (format nil "CASE_~a_" value)))
+     ('c::default (nice-gensym value))
+     (_ (error "case ~s is not a number" value))))
+
+ (defun switch-case-values (cases) (mapcar #'first cases))
+ (defun switch-case-codes (cases) (mapcar #'rest cases))
+
+ (defun make-switch-target (target code)
+   `(progn (c::label ,target)
+      ,@code))
+
+ (defun switch-default-hack (jumps break-label)
+   "The 'default' case must be 'goto'ed at the end of jump clauses,
+    but it isn't required to be placed at the end of the switch.  So,
+    we look for the generated default clause (which looks like '(goto
+    DEFAULT####)') and move it to the end.  "
+   (multiple-value-bind (defaults numbers)
+       (lpartition (lambda (jump-form)
+                     (eq 'c::default (second jump-form)))
+                   jumps)
+     (append numbers (or defaults
+                         `((c::goto ,break-label)))))))
+
+(defmacro switch-jump-entry (value target)
+  (declare (type (or number (eql c::default)) value)
+           (symbol target))
+  (case value
+    (c::default `(c::goto ,target))
+    (t `(%switch-jump-entry ,value ',target))))
+
+(defmacro c::switch (expr &body cases)
+  "The output is
+     - Each test in the order given a single test is of the form:
+           (CMP num BEQ case_label)
+     - The default test (BRA default_label)
+     - each label (in the order given) and it's code"
+  (with-gensyms (switch_end)
+    (let* ((values (switch-case-values cases))
+           (codes (switch-case-codes cases))
+           (labels (mapcar #'gen-switch-label values)))
+      `(with-indent _switch
+         (with-break ,switch_end
+           ,expr
+           (with-indent _switch_tests
+             ,@(switch-default-hack
+                (mapcar (fn (v l) `(switch-jump-entry ,v ,l))
+                        values labels)
+                switch_end))
+           (with-indent _switch_targets
+             ,@(mapcar #'make-switch-target labels codes))
+           (c::label ,switch_end))))))
 
 ; '(c::+ c::- c::^ c::& c::band c::\| c::bor c::_ c::++ c::-- c::@ c::$)

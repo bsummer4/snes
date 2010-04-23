@@ -79,66 +79,13 @@ using CL:MACROLET and CL:FLET.
 (defmacro c-goto-<if-zero> (label)
   `(%branch-if-not (lookup-label ',label)))
 
-
-
-"### Switch"
-(always-eval
- (defun switch-case-values (cases) (mapcar #'first cases))
- (defun switch-case-codes (cases) (mapcar #'second cases))
- (defun gen-switch-label (value)
-   (etypecase value
-     (number (gensym (format nil "CASE_~a_" value)))
-     (symbol (progn
-               (or (eq value 'default)
-                   (error "case ~a is not a number" value))
-               (nice-gensym value)))))
-
- (defun make-switch-jump-entry (value target)
-   (if (eq value 'default)
-       `(c-goto ,target)
-       `(progn
-          (asm cmp :immediate-w ,value)
-          (emit (format nil "BEQ {~a}" ',target)))))
-
- (defun make-switch-target (target code)
-   `(progn (c-label ,target) ,code))
-
- (defun switch-default-hack (jumps break-label)
-   "The 'default' case must be 'goto'ed at the end of jump clauses, but
-   it doesn't need to be at the end of the switch.  So, we look for
-   the generated default clause (which like '(goto DEFAULT####)') and
-   moves it to the end.  "
-   (multiple-value-bind (defaults numbers)
-       (lpartition (lambda (jump-form)
-                     (eq 'c-goto (first jump-form)))
-                   jumps)
-     (append numbers (or defaults
-                         `((c-goto ,break-label)))))))
-
-(defmacro c-switch (expr &body cases)
-  "The output is
-     - Each test in the order given a single test is of the form:
-           (CMP num BEQ case_label)
-     - The default test (BRA default_label)
-     - each label (in the order given) and it's code"
-  (with-gensyms (switch_end)
-    (let* ((values (switch-case-values cases))
-           (codes (switch-case-codes cases))
-           (labels (mapcar #'gen-switch-label values)))
-      `(with-indent _switch
-         (with-break ,switch_end
-           ,expr
-           (with-indent _switch_tests
-             ,@(switch-default-hack
-                (mapcar #'make-switch-jump-entry values labels)
-                switch_end))
-           (with-indent _switch_targets
-             ,@(mapcar #'make-switch-target labels codes))
-           (c-label ,switch_end))))))
-
-
+(defun %switch-jump-entry (value target)
+  (declare (symbol target) (number value))
+  (asm cmp :immediate-w value)
+  (emit (format nil "BEQ {~a}" target)))
 
 (defmacro c-block (&body code)
+  "TODO This should introduce a new variable namespace.  "
   `(progn ,@code))
 
 (always-eval
