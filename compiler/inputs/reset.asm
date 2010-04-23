@@ -129,7 +129,7 @@
 ; REP #$20
 ; STZ VMADD
 ; JSL Immediate_DMA
-; #Data {$09 $18 $80:FFF0 $0000}
+; #Data {$09 $18 Zero $0000}
 ; PLP
 ; RTS
 
@@ -138,7 +138,7 @@
 ; REP #$20
 ; STZ OAMADD
 ; JSL Immediate_DMA
-; #Data {$0A $04 $80:FFF0 $0220}
+; #Data {$0A $04 Zero $0220}
 ; PLP
 ; RTS
 
@@ -147,7 +147,7 @@
 ; SEP #$20
 ; STZ CGADD
 ; JSL Immediate_DMA
-; #Data {$0A $22 $80:FFF0 $0200}
+; #Data {$0A $22 Zero $0200}
 ; PLP
 ; RTS
 
