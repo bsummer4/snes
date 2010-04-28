@@ -10,7 +10,9 @@ need to export symbols and stuff here.
   (:nicknames #:s))
 
 (defpackage :c)
-
+(defpackage #:tag (:export #:tag #:def #:defs #:let #:tag? #:.form
+                           #:replace))
+(defpackage #:front)
 (in-package #:cs400-compiler)
 (setf (readtable-case *readtable*) :invert)
 

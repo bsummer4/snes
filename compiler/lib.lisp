@@ -140,3 +140,10 @@
 (defmacro define-constant (name value &optional doc)
   `(defconstant ,name (if (boundp ',name) (symbol-value ',name) ,value)
      ,@(when doc (list doc))))
+
+(defun read-but-ignore (stream semicolon hash)
+           (declare (ignore hash semicolon))
+           (read stream)
+           (values))
+
+(set-dispatch-macro-character #\# #\; #'read-but-ignore)

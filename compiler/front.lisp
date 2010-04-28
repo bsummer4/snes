@@ -1,8 +1,5 @@
 "
-# Syntax Analysis
-
-This exposes all the user-visible macros as thin macros over compiler
-primitives.
+# Syntax Analysis -- The Second Compiler Pass
 
 The purpose of these macros is to handle funky syntax and to make the
 job of later transformations eaiser.  The following rules apply to
@@ -10,37 +7,61 @@ code in this file:
 
   1. No macro may perform non-trivial transformations.
   2. No knowledge of the target architecture is allowed.
-  3. (Possibly) only target macros defined in :CL and :IR.
+  3. Target the next layer: :IR
 
 Here are the transformations that we do:
 
-  - Tag expressions with (expr expr)
+  - Tag expressions with (ir::expr expr)
+  - Tag variables with (ir::var-ref)
   - Expand Control Structures
 "
 
 (in-package #:cs400-compiler)
 
+(define-constant +front-tags+
+    '((front::goto label)
+      (front::label name)
+      (front::block &body code)
+
+      (front::if test then-form &optional else-form)
+      (front::while test &body body)
+      (front::do-while test &body body)
+      (front::for ((setup test iterate) &body body))
+      (front::switch expr &body cases)
+
+      (front::global-variable-declaration)
+      (front::global-variable-initialization)
+      (front::local-variable-declaration)
+      (front::local-variable-initialization)
+
+      (front::+ x y)
+      (front::- x y)
+      (front::^ x y)
+      (front::& x y)
+      (front::band x y)
+      (front::\| x y)
+      (front::bor x y)
+      (front::_ x y)
+      (front::++ x)
+      (front::-- x)
+      (front::@ x)
+      (front::return x)
+      (front::break)
+      (front::continue)
+      (front::$ x)))
+
+(define-constant +front-tag-names+
+    (cons 'c::var
+          #.`(quote
+              ,(mapcar #'first +front-tags+))))
+
+
+"# Utillity Functions"
 (defmacro with-break (break-label &body code)
   `(with-goto-macrolet c::break ,break-label ,@code))
 
 (defmacro with-continue (continue-label &body code)
   `(with-goto-macrolet c::continue ,continue-label ,@code))
-
-
-(defmacro c::goto (label) `(c-goto ,label))
-(defmacro c::label (name) `(c-label ,name))
-(defmacro c::proto (name) `(c-proto ,name))
-(defmacro c::proc ((name return-type) args &body code)
-  (declare (symbol return-type name) (list args))
-  `(c-proc (,name ,return-type) ,args ,@code))
-
-(defmacro c::var (name type &optional value)
-  (declare (symbol name type))
-  (if value
-      `(c-var ,name ,type ,value)
-      `(c-var ,name ,type)))
-
-(defmacro c::block (&body code) `(c-block ,@code))
 
 (defmacro c::if (test then-form &optional else-form)
   (with-gensyms ((else "if_else_") (end "if_end_"))
@@ -140,4 +161,5 @@ Here are the transformations that we do:
              ,@(mapcar #'make-switch-target labels codes))
            (c::label ,switch_end))))))
 
-; '(c::+ c::- c::^ c::& c::band c::\| c::bor c::_ c::++ c::-- c::@ c::$)
+(define-pass :front
+  ((c::var )))

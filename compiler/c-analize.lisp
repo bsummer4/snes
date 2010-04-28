@@ -7,23 +7,6 @@ labels or variable declarations in a function body.
 "
 
 (in-package :cs400-compiler)
-
-(macrolet ((dh (n fs &body code)
-             `(macroexpand-dammit::defhandler ,n ,fs ,@code)))
-  "We tell macroexpand-dammit not to expand c-label c-goto c-var
-     ->A or A->, since we need to scan code-bodies for these (or
-     because we want rebind them in a macrolet after preexpansion).  "
-  (dh c-label (label name) `(list ',label ',name))
-  (dh c-goto (goto name) `(list ',goto ',name))
-  (dh A-> (set var) `(list ',set ',var))
-  (dh ->A (ref var) `(list ',ref ',var))
-  (dh spill (ref var) `(list ',ref ',var))
-  (dh need-call-space (macro-name amount) `(list ',macro-name ',amount))
-  (dh c-var (var name type &optional default-value)
-      (if default-value
-          `(list ',var ',name ',type ',default-value)
-          `(list ',var ',name ',type))))
-
 (defun preexpand (expr)
   (macroexpand-dammit:macroexpand-dammit expr))
 
