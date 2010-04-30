@@ -13,6 +13,7 @@ need to export symbols and stuff here.
 (defpackage #:tag (:export #:tag #:def #:defs #:let #:tag? #:.form
                            #:replace))
 (defpackage #:front)
+(defpackage #:back)
 (in-package #:cs400-compiler)
 (setf (readtable-case *readtable*) :invert)
 

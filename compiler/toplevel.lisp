@@ -31,8 +31,17 @@ are:
       (c::_ x y)
       (c::++ x)
       (c::-- x)
+      (c::= x y)
+      (c::== x y)
+      (c::< x y)
+      (c::> x y)
+      (c::>= x y)
+      (c::<= x y)
       (c::@ x)
       (c::$ x)))
+
+(define-constant +c-operator-names+
+    '#.(mapcar #'first +c-operators+))
 
 (define-constant +c-control-structures+
     '((c::block &body code)
@@ -71,12 +80,6 @@ are:
   (declare (symbol symbol))
   (member symbol +c-tag-names+))
 
-(defun c->front (symbol)
-  (declare (symbol symbol))
-  (assert (eq (symbol-package symbol)
-              (find-package :c)))
-  (intern (symbol-name symbol) (find-package :front)))
-
 "# Pass Definition"
 (always-eval
   #.`(define-pass toplevel
@@ -90,13 +93,14 @@ are:
        ((c::proc (name type) args &body code)
         -> `(front::proc ,name ,type ,args
                          ,(apply-pass
-                           (c-proc `(progn ,@code))
+                           (c-proc (taggify-form
+                                    `(progn ,@code)
+                                    'toplevel))
                            'toplevel)))))
 
 "TODO predicates defined later have higher priority.  "
 (define-predicated-transformation (pass-to-front
                                    (fn1
-                                     (print !1)
                                      (c-tag? (first !1)))
                                    toplevel)
     (tagname &rest args)
@@ -104,9 +108,8 @@ are:
    the :front package.  "
   `(,(c->front tagname) ,@args))
 
-(define-named-transformation (c-var c::var toplevel)
-    (var name type &optional value)
-  (declare (ignore var))
+(define-tag-substitution (c-var c::var toplevel)
+    (name type &optional value)
   `(progn
      (front::local-variable-declaration ,name ,type)
      ,(when value

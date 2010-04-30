@@ -7,6 +7,6 @@
                (:file "asm")
                (:file "tag")
                (:file "c-impl")
-               (:file "front")
-               (:file "toplevel"))
+               (:file "toplevel")
+               (:file "front"))
   :serial t)

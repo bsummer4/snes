@@ -147,3 +147,28 @@
            (values))
 
 (set-dispatch-macro-character #\# #\; #'read-but-ignore)
+
+(require :alexandria)
+(import '(alexandria:mappend))
+(defun %progn-flatten (form)
+  "Always returns a list of forms.  "
+  (if (and (listp form)
+           (eq (first form) 'progn))
+      (mappend (fn1 (when !1
+                      (%progn-flatten !1))) (rest form))
+      (list form)))
+
+(defun progn-flatten (form)
+  "I use progns a lot when generating code, but if there's code of the
+   form:
+
+       (progn ... (progn ...) ...)
+
+   Things get messy for no reason; This function transforms any PROGN
+   form into code with the same meaning but without the excess PROGNS.
+   If the passed form is not a PROGN form, we return it without
+   modification.  "
+  (if (and (listp form)
+           (eq (first form) 'progn))
+      `(progn ,@(%progn-flatten form))
+      form))

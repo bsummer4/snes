@@ -30,6 +30,12 @@ labels or variable declarations in a function body.
         ((list* 'progn body) `(progn ,@(mapcar #'recur body)))
         ((as form *) (& function form)))))
 
+(defun tree-walk (function tree)
+  (flet ((recur (code) (tree-walk function code)))
+    (etypecase tree
+      (list (funcall function (mapcar #'recur tree)))
+      (t (& function tree)))))
+
 (defun find-forms (predicate code)
   (collecting
     (code-walk (fn1 (if (& predicate !1)

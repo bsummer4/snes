@@ -2,6 +2,8 @@
 
 (in-package #:cs400-compiler)
 
+(defparameter *annotations* nil)
+
 (defparameter +addressing-modes-and-syntax+
   '((:implied "")
     (:accumulator "A")
@@ -40,9 +42,12 @@
   (values))
 
 (defmacro with-indent (name &body code)
-  `(let ((*emit-indentation* (1+ *emit-indentation*)))
-     (format t "~{~a~}~a~%" (rest (indent-chars)) ',name)
-     ,@code))
+  (if *annotations*
+      `(let ((*emit-indentation* (1+ *emit-indentation*)))
+         (format t "~{~a~}~a~%" (rest (indent-chars)) ',name)
+         ,@code)
+      `(progn
+         ,@code)))
 
 (defun asm-subformat (format-char argument)
   (etypecase argument

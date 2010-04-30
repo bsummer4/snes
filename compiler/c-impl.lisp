@@ -247,10 +247,6 @@ using CL:MACROLET and CL:FLET.
        (with-stack-lookup-macros ',(append argument-spaces variable-spaces)
          ,@code))))
 
-(defmacro with-return (label &body code)
-  `(with-goto-macrolet c-return ,label ,@code))
-
-
 (defmacro c-proc ((name return-type) args &body code)
   (declare (ignore return-type))
   (let* ((input-code `(progn ,@code))
@@ -396,10 +392,6 @@ using CL:MACROLET and CL:FLET.
 (defun compile-c (file)
   (with-open-file (*standard-input* file)
     (repl)))
-
-(defmacro with-goto-macrolet (macro-name label &body code)
-  `(macrolet ((,macro-name () `(c::goto ,',label)))
-     ,@code))
 
 #|
 (c-proc c-main ()

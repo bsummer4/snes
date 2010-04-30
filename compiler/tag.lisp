@@ -16,10 +16,12 @@ you shit.
   (fn (&rest args)
     (not (apply f args))))
 
-(defmacro tag:def (name &rest lambda-list)
+(defmacro tag:def (name pass-name &rest lambda-list)
   (declare (ignore lambda-list))
-  `(defmacro ,name (&rest args)
-     `(tag:tag ,`(quote ,(cons ',name args)))))
+  `(progn
+     (push ',name (slot-value
+                 (gethash ',pass-name (.passes *compiler*))
+                 'tags))))
 
 (defmacro tag:let ((name &rest lambda-list) &body body)
   (declare (ignore lambda-list))
@@ -38,7 +40,7 @@ you shit.
 (defun tag:replace (function form)
   "Replace instances of (tag:tag '(&rest SUBFORM)) anywhere in FORM.
    FUNCTION is called with SUBFORM."
-  (code-walk
+  (tree-walk
    (fn (subform)
      (match subform
        ((list 'tag:tag (list 'quote subsubform))
@@ -46,10 +48,18 @@ you shit.
        (_ subform)))
    form))
 
-(defun transform-rule (rule invalid)
+(defstruct transformation predicate function)
+(defstruct compiler-pass name tags macros transformations)
+(defclass compiler ()
+  ((passes :accessor .passes :initform (make-hash-table))))
+
+(defparameter *compiler* (make-instance 'compiler))
+
+(defun transform-rule (rule invalid pass-name)
   (match rule
     ((list (list* name lambda-list))
-     `(tag:def ,name ,@lambda-list))
+     (print `(tag:def ,name ,pass-name ,@lambda-list))
+     `(tag:def ,name ,pass-name ,@lambda-list))
     ((list (list* name lambda-list) '-> body)
      (typecase body
        (list `(defmacro ,name ,lambda-list ,body))
@@ -57,13 +67,6 @@ you shit.
                   `(,',body ,@args)))
        (t (& invalid rule))))
     (_ (& invalid rule))))
-
-(defstruct transformation predicate function)
-(defstruct compiler-pass name tags macros transformations)
-(defclass compiler ()
-  ((passes :accessor .passes :initform (make-hash-table))))
-
-(defparameter *compiler* (make-instance 'compiler))
 
 (defmacro define-pass (pass-name &body toplevel-rules)
   (declare (symbol pass-name))
@@ -74,9 +77,8 @@ you shit.
     `(progn
        (setf (gethash ',pass-name (slot-value *compiler* 'passes))
              (make-compiler-pass :name ',pass-name))
-       (make-instance 'compiler-pass )
        ,@(mapcar
-          (fn1 (transform-rule !1 #'invalid))
+          (fn1 (transform-rule !1 #'invalid pass-name))
           toplevel-rules))))
 
 
@@ -111,24 +113,52 @@ you shit.
                           :function #',function-name)
                          ',pass-name)))
 
-(defmacro define-named-transformation ((function-name tag pass-name)
-                                       lambda-list &body code)
-  (declare (symbol function-name pass-name tag))
+(defmacro define-tag-substitution ((macro-name tag pass-name)
+                                   lambda-list &body code)
+  (declare (symbol macro-name pass-name tag))
   `(progn
-     (defun ,function-name ,lambda-list
+     (defmacro ,macro-name ,lambda-list
        ,@code)
      (add-transformation (make-transformation
                           :predicate (fn1 (eq (car !1) ',tag))
-                          :function #',function-name)
+                          :function (fn (&rest form)
+                                      `(,',macro-name ,@(cdr form))))
                          ',pass-name)))
+
+(defun get-tags (pass-name)
+  (slot-value
+   (gethash pass-name (.passes *compiler*))
+   'tags))
+
+(defun taggify-form (form pass-name)
+  (let ((tags (get-tags pass-name)))
+    (tree-walk (fn1
+                 (if (and (listp !1)
+                          (member (car !1) tags))
+                     (tag-quote !1)
+                     !1))
+               form)))
+
+(defun tag-quote (form) `(tag:tag ,`(quote ,form)))
 
 (defun transform-tag-form (form pass-name)
   (iter (for ts in (get-transformations pass-name))
         (with-slots (predicate function) ts
           (when (& predicate form)
             (return (apply function form))))
-        (finally (return form))))
+        (finally (return (tag-quote form)))))
+
+(defun progn-clean (code)
+  (tree-walk #'progn-flatten code))
 
 (defun apply-pass (form pass-name)
-  (tag:replace (fn1 (transform-tag-form !1 pass-name))
-               (preexpand form)))
+  (progn-clean
+   (preexpand
+    (tag:replace (fn1 (transform-tag-form !1 pass-name))
+                 (preexpand form)))))
+
+(defun c->front (symbol)
+  (declare (symbol symbol))
+  (assert (eq (symbol-package symbol)
+              (find-package :c)))
+  (intern (symbol-name symbol) (find-package :front)))
