@@ -9,11 +9,14 @@ need to export symbols and stuff here.
   (:shadow #:match)
   (:nicknames #:s))
 
+(import '(fare-matcher::of-type alexandria:mappend) :cs400-compiler)
+
 (defpackage :c)
 (defpackage #:tag (:export #:tag #:def #:defs #:let #:tag? #:.form
-                           #:replace))
+                           #:replace #:find))
 (defpackage #:front)
 (defpackage #:back)
+(defpackage #:far-back)
 (in-package #:cs400-compiler)
 (setf (readtable-case *readtable*) :invert)
 

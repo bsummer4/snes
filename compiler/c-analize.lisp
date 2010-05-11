@@ -61,7 +61,8 @@ labels or variable declarations in a function body.
   (match expr
     ((type symbol) (c-symbol? expr))))
 
-(defun label-form? (expr) (match? (list 'c-label symbol) expr))
+(set-fn label-form? (match? (list 'c-label (type symbol))))
+
 (defun var-form? (expr)
   (match expr
     ((list 'c-var (type symbol) (type symbol)) t)
@@ -103,15 +104,6 @@ labels or variable declarations in a function body.
 (defun find-temp-variables (code)
   (mapcar (fn1 (cons (%temp !1) 'c-int))
           (range* (max-temp-variable code))))
-
-(defun find-call-space-requests (code)
-  (find-forms #'call-space-request? code))
-
-(defun needed-call-space (code)
-  (* 2 ;; TODO This assumes that all types are two bytes
-     (or (iter (for form in (find-call-space-requests code))
-           (maximize (second form)))
-         0)))
 
 (defun primitive? (x)
   (typecase x (symbol t) (number t)

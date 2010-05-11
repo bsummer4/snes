@@ -2,23 +2,19 @@
 # Control Structures -- The Second Compiler Pass
 
 This pass simply expands out control structures.
+
+TODO Handle front::block
+
+     The way to do this is: Annotate all variable references with,
+     say, front::var, then bind front::var as a macrolet in
+     front::block and front::proc, and also bind
+     front::local-variable-declaration and
+     front::local-variable-initialization.  Use these macrolets to
+     rename variables within blocks.
 "
 
 (in-package #:cs400-compiler)
-"
-# Internal Operators
 
-(goto-if-not expr)
-(goto-if-< expr expr label)
-(goto-if-<= expr expr label)
-(goto-if-> expr expr label)
-(goto-if->= expr expr label)
-(goto-if-== expr expr label)
-(goto-if-!= expr expr label)
-
-what else?
-
-"
 (define-constant +front-tags+
     '((front::goto label)
       (front::label name)
@@ -60,20 +56,25 @@ what else?
 (defun symbol-in-package? (symbol package)
   (eq (symbol-package symbol) (find-package package)))
 
-(defun package-change (symbol from to)
-  (declare (symbol symbol) (keyword from to))
-  (assert (eq (find-package from)
-              (symbol-package symbol)))
-  (intern (symbol-name symbol) to))
+(always-eval
+  (defun package-change (symbol to-package)
+    (declare (symbol symbol) (keyword to-package))
+    (intern (symbol-name symbol) to-package))
 
-(defun front->cs400-compiler (symbol) (package-change symbol :front :s))
-(defun front->back (symbol) (package-change symbol :front :back))
+  (defun front->cs400-compiler (symbol) (package-change symbol :s))
+  (defun front->back (symbol) (package-change symbol :back)))
 
 (define-constant +front-operator-names+
-  (append '(front::goto-if-not)
+  (append '(front::goto-if-not
+            front::goto-if-<
+            front::goto-if->
+            front::goto-if-<=
+            front::goto-if->=
+            front::goto-if-!=
+            front::goto-if-==)
           (mapcar #'c->front +c-operator-names+)))
 
-(defun move-operators-to-the-compiler400-compiler-package (form)
+(defun operators-to-the-compiler-package (form)
   (tree-walk
    (fn1 (if (member !1 +front-operator-names+)
             (front->cs400-compiler !1)
@@ -90,11 +91,15 @@ what else?
                                    `(back::expr
                                      (,',(front->cs400-compiler !1)
                                          ,@(mapcar
-                                            #'move-operators-to-the-compiler400-compiler-package
+                                            #'operators-to-the-compiler-package
                                             args)))))
-                        (append '(front::funcall front::variable-refernce)
-                                +front-operator-names+))
-             ,@code))
+                       +front-operator-names+)
+             (macrolet ((front::funcall (f &rest args)
+                          `(back::expr
+                            (,f ,@(mapcar
+                                   #'operators-to-the-compiler-package
+                                   args)))))
+               ,@code)))
 
 (defmacro with-goto-macrolet (macro-name label &body code)
   `(macrolet ((,macro-name () `(back::goto ,',label)))
@@ -165,16 +170,16 @@ what else?
    form))
 
 "# Pass Definition"
-(defpackage :back)
 (always-eval
   #.`(define-pass front
        ,@(mapcar #'list +front-tags+)
        ((front::proc name return-type args body)
         -> `(back::proc ,name ,return-type ,args
-                        (with-annotated-operators
-                          ,(annotate-functions-and-variables
-                            (apply-pass (taggify-form (returnify body) 'front)
-                                        'front)))))))
+                        ,(preexpand
+                          `(with-annotated-operators
+                             ,(annotate-functions-and-variables
+                               (apply-pass (taggify-form (returnify body) 'front)
+                                           'front))))))))
 
 
 "# Pass Transformations"
@@ -206,11 +211,21 @@ what else?
     ()
   (error "'continue' statement outside of a loop"))
 
+(defmacro front-goto-if-not (expr label)
+  (fare-matcher:match expr
+    (`(front::> ,x ,y) `(front::goto-if-<= ,x ,y ,label))
+    (`(front::< ,x ,y) `(front::goto-if->= ,x ,y ,label))
+    (`(front::>= ,x ,y) `(front::goto-if-< ,x ,y ,label))
+    (`(front::<= ,x ,y) `(front::goto-if-> ,x ,y ,label))
+    (`(front::== ,x ,y) `(front::goto-if-!= ,x ,y ,label))
+    (`(front::!= ,x ,y) `(front::goto-if-== ,x ,y ,label))
+    (* `(front::goto-if-not ,expr ,label))))
+
 (define-tag-substitution (c-if front::if front)
     (test then-form &optional else-form)
   (with-gensyms ((else "if_else_") (end "if_end_"))
     `(with-indent "_if"
-       (front::goto-if-not ,test ,(if else-form else end))
+       (front-goto-if-not ,test ,(if else-form else end))
        (with-indent "_if_then" ,then-form)
        ,(when else-form `(back::goto ,end))
        ,(when else-form `(back::label ,else))

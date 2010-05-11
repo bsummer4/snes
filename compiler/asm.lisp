@@ -2,7 +2,8 @@
 
 (in-package #:cs400-compiler)
 
-(defparameter *annotations* nil)
+(always-eval
+  (defparameter *annotations* nil))
 
 (defparameter +addressing-modes-and-syntax+
   '((:implied "")
@@ -68,36 +69,137 @@
                           (list char))))
           'string))
 
-(defmacro asm (command mode &rest args)
-  `(emit (format nil "~a ~a"
-                 ,(symbol-name command)
-                 (asm-format
-                  (car (elookup ,mode +addressing-modes-and-syntax+))
-                             ,@args))))
+(defun asm (command mode &rest args)
+  (declare (keyword command mode))
+  (emit (format nil "~a ~a"
+                (symbol-name command)
+                (apply
+                 #'asm-format
+                 (car (elookup mode +addressing-modes-and-syntax+))
+                 args))))
 
 
 "# Code Generation Routines"
-(defun %label (name) (emit (format nil "{~a}" name)))
-(defun %goto (label-name) (emit (format nil "BRA {~a}" label-name)))
-(defun %branch-if-not (label-name)
-  (emit (format nil "BEQ {~a}" label-name)))
+(always-eval
+  #.`(progn ,@(mapcar (fn1 (let* ((n (symbol-name !1))
+                                  (p (symbol-package !1))
+                                  (fn (intern (format nil "%~a" n) p)))
+                             `(defun ,fn (label)
+                                (emit (format nil ,(string-upcase
+                                                    (format nil "~a {~~a}" n))
+                                              label)))))
+                      '(beq bne bmi bpl bra))))
 
-(defun asm-code (symbol &key (prototype nil))
+(defun %label (name) (emit (format nil "{~a}" name)))
+(defun %goto (label-name) (%bra label-name))
+(defun %branch-if-not (label-name) (%beq label-name))
+
+(defun %asm-code (symbol &key (prototype nil))
   (emit
    (format nil (if prototype "#Code w ~a" "#Code w {~a}")
            (symbol-name symbol))))
 
-(defmacro 16-bit-mode () `(asm rep :immediate #x30))
-(defmacro 8-bit-mode () `(asm sep :immediate #x30))
-(defun lda (integer)
-  (declare (type integer integer))
-  (asm lda :immediate-w integer))
+(defmacro 16-bit-mode () `(asm :rep :immediate #x30))
+(defmacro 8-bit-mode () `(asm :sep :immediate #x30))
+
+(defun %load-number (x)
+  (declare (number x))
+  (asm :lda :immediate-w x))
 
 (defmacro write-w (addr value)
-  `(progn (asm lda :immediate-w ,value)
-          (asm sta :direct ,addr)))
+  `(progn (asm :lda :immediate-w ,value)
+          (asm :sta :direct ,addr)))
 
 (defun set-reset-handler (value)
   (emit (format nil
                 "#Data $00:FFFC _reset_handler {~a $0000}"
                 value)))
+
+(defun %grow-stack (amount)
+  (when (plusp amount)
+    (with-indent "_growing_the_stack"
+      (asm :tsc :implied)
+      (asm :sec :implied)
+      (asm :sbc :immediate-w amount)
+      (asm :tcs :implied))))
+
+(defun %shrink-stack (amount)
+  (when (plusp amount)
+    (with-indent "_shrinking_the_stack"
+      (asm :tsc :implied)
+      (asm :clc :implied)
+      (asm :adc :immediate-w amount)
+      (asm :tcs :implied))))
+
+(defun %store-addr (address storage-class)
+  (ecase storage-class
+    (:stack (asm :sta :stack-indexed address))
+    (:global (asm :sta :absolute address))))
+
+(defun %load-addr (address storage-class)
+  (ecase storage-class
+    (:stack (asm :lda :stack-indexed address))
+    (:global (asm :lda :absolute address))))
+
+(defun %switch-jump-entry (value target)
+  (declare (symbol target) (number value))
+  (%cmp value)
+  (%beq target))
+
+(defun %sta (operand)
+  (declare (list operand))
+  (apply #'%store-addr (reverse operand)))
+
+(defun %lda (operand)
+  (fare-matcher:match operand
+    ((of-type number) (%load-number operand))
+    ((list storage-class addr) (%load-addr addr storage-class))))
+
+(defun %cmp (operand)
+  (fare-matcher:match operand
+    ((of-type number) (asm :cmp :immediate-w operand))
+    ((list storage-class addr)
+     (ecase storage-class
+       (:stack (asm :cmp :stack-indexed addr))
+       (:global (asm :cmp :absolute addr))))))
+
+(defun %goto-if-== (x y label)
+  (%lda x) (%cmp y) (%beq label))
+(defun %goto-if-!= (x y label)
+  (%lda x) (%cmp y) (%bne label))
+(defun %goto-if->= (x y label)
+  (%lda x) (%cmp y) (%bmi label) (%beq label))
+(defun %goto-if-> (x y label)
+  (%lda x) (%cmp y) (%bmi label))
+(defun %goto-if-< (x y label)
+  (%lda x) (%cmp y) (%bpl label))
+(defun %goto-if-<= (x y label)
+  (%lda x) (%cmp y) (%bpl label)  (%beq label))
+(defun %goto-if-not (x label)
+  (%lda x) (%beq label))
+
+(defun %inc (x)
+  (declare (list x))
+  (%lda x) (asm :inc :accumulator) (%sta x))
+
+(defun %dec (x)
+  (declare (list x))
+  (%lda x) (asm :dec :accumulator) (%sta x))
+
+(defun asm* (op arg)
+  (fare-matcher:match arg
+    ((of-type number) (asm op :immediate-w arg))
+    ((list storage-class addr)
+     (ecase storage-class
+       (:stack (asm op :stack-indexed addr))
+       (:global (asm op :absolute addr))))))
+
+(defun %- (x y)
+  (asm :sec :implied)
+  (%lda x)
+  (asm* :sbc y))
+
+(defun %+ (x y)
+  (asm :clc :implied)
+  (%lda x)
+  (asm* :adc y))

@@ -2,7 +2,12 @@
 
 (in-package #:cs400-compiler)
 
-(defun insult () (error "u is dumb"))
+(defun insult () (error "u is dum"))
+
+(defun wtf (object)
+  (error "Hey!  What the fuck is this supposed to mean???~%    ~s~%~%Jesus.~%"
+         object))
+
 (defun traceme (x) x)
 (defun flatten (lists) (apply #'append lists))
 
@@ -148,8 +153,6 @@
 
 (set-dispatch-macro-character #\# #\; #'read-but-ignore)
 
-(require :alexandria)
-(import '(alexandria:mappend))
 (defun %progn-flatten (form)
   "Always returns a list of forms.  "
   (if (and (listp form)
@@ -172,3 +175,10 @@
            (eq (first form) 'progn))
       `(progn ,@(%progn-flatten form))
       form))
+
+(defmacro match? (form) `#l(match !1 (,form t)))
+(defun false (x) (declare (ignore x)))
+(defmacro set-fn (name value)
+  `(always-eval
+     (setf (symbol-function ',name)
+           ,value)))

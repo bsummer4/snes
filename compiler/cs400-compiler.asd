@@ -1,12 +1,16 @@
 (asdf:defsystem #:cs400-compiler
-  :depends-on (:iterate :cl-match :split-sequence)
+  :depends-on (:iterate :cl-match :split-sequence :fare-matcher
+               :memoize :alexandria)
   :components ((:file "package")
                (:file "lib")
                (:file "macroexpand-dammit")
                (:file "c-analize")
                (:file "asm")
+               (:file "state")
                (:file "tag")
                (:file "c-impl")
                (:file "toplevel")
-               (:file "front"))
+               (:file "front")
+               (:file "back")
+               (:file "far-back"))
   :serial t)

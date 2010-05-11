@@ -48,13 +48,15 @@ you shit.
        (_ subform)))
    form))
 
-(defstruct transformation predicate function)
-(defstruct compiler-pass name tags macros transformations)
-(defclass compiler ()
-  ((passes :accessor .passes :initform (make-hash-table))))
+(defun tag:find (predicate form)
+  (collecting
+    (tag:replace #l(progn
+                     (when (& predicate !1)
+                       (collect !1))
+                     !1)
+                 form)))
 
-(defparameter *compiler* (make-instance 'compiler))
-
+"# Pass definition macros"
 (defun transform-rule (rule invalid pass-name)
   (match rule
     ((list (list* name lambda-list))
@@ -83,16 +85,6 @@ you shit.
 
 
 "# Transformations"
-(defun get-transformations (pass-name)
-  (compiler-pass-transformations
-   (or (gethash pass-name (.passes *compiler*))
-       (error "undefined compiler pass ~a" pass-name))))
-
-(defun add-transformation (transformation pass-name)
-  (push transformation
-        (compiler-pass-transformations
-         (gethash pass-name (.passes *compiler*)))))
-
 (defmacro define-predicated-transformation
     ((function-name predicate pass-name)
      lambda-list &body code)
@@ -125,10 +117,7 @@ you shit.
                                       `(,',macro-name ,@(cdr form))))
                          ',pass-name)))
 
-(defun get-tags (pass-name)
-  (slot-value
-   (gethash pass-name (.passes *compiler*))
-   'tags))
+
 
 (defun taggify-form (form pass-name)
   (let ((tags (get-tags pass-name)))
