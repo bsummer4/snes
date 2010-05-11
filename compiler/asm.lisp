@@ -88,7 +88,7 @@
                                 (emit (format nil ,(string-upcase
                                                     (format nil "~a {~~a}" n))
                                               label)))))
-                      '(beq bne bmi bpl bra))))
+                      '(beq bne bmi bpl bra bcs))))
 
 (defun %label (name) (emit (format nil "{~a}" name)))
 (defun %goto (label-name) (%bra label-name))
@@ -146,6 +146,14 @@
   (%cmp value)
   (%beq target))
 
+(defun asm* (op arg)
+  (fare-matcher:match arg
+    ((of-type number) (asm op :immediate-w arg))
+    ((list storage-class addr)
+     (ecase storage-class
+       (:stack (asm op :stack-indexed addr))
+       (:global (asm op :absolute addr))))))
+
 (defun %sta (operand)
   (declare (list operand))
   (apply #'%store-addr (reverse operand)))
@@ -168,13 +176,14 @@
 (defun %goto-if-!= (x y label)
   (%lda x) (%cmp y) (%bne label))
 (defun %goto-if->= (x y label)
-  (%lda x) (%cmp y) (%bmi label) (%beq label))
+  (%lda x) (%cmp y) (%bcs label))
 (defun %goto-if-> (x y label)
-  (%lda x) (%cmp y) (%bmi label))
+  (let ((false (gensym "false")))
+    (%lda x) (%cmp y) (%beq false) (%bcs label) (%label false)))
 (defun %goto-if-< (x y label)
-  (%lda x) (%cmp y) (%bpl label))
+  (%lda x) (%cmp y) (%bmi label))
 (defun %goto-if-<= (x y label)
-  (%lda x) (%cmp y) (%bpl label)  (%beq label))
+  (%lda x) (%cmp y) (%bmi label)  (%beq label))
 (defun %goto-if-not (x label)
   (%lda x) (%beq label))
 
@@ -186,14 +195,6 @@
   (declare (list x))
   (%lda x) (asm :dec :accumulator) (%sta x))
 
-(defun asm* (op arg)
-  (fare-matcher:match arg
-    ((of-type number) (asm op :immediate-w arg))
-    ((list storage-class addr)
-     (ecase storage-class
-       (:stack (asm op :stack-indexed addr))
-       (:global (asm op :absolute addr))))))
-
 (defun %- (x y)
   (asm :sec :implied)
   (%lda x)
@@ -203,3 +204,6 @@
   (asm :clc :implied)
   (%lda x)
   (asm* :adc y))
+
+(defun %comment (str)
+  (emit (format nil "_~a" str)))

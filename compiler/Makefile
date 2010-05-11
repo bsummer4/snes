@@ -1,13 +1,16 @@
 CC = ./compiler.lisp
 ASM = ../assembler/65816asm
 DAT = pongChar.dat pongFrame.dat pongPallet.dat
+LISP = asm.lisp back.lisp c-analize.lisp c-impl.lisp compiler.lisp
+LISP += far-back.lisp front.lisp lib.lisp macroexpand-dammit.lisp package.lisp
+LISP += state.lisp tag.lisp toplevel.lisp
 
 all: compiler;
 clean:; rm -f *.fasl *.asm *.smc *~ compiler reset.asm snes_registers.h *.dat
 install: compiler; ln -f compiler ~/bin/scc
 
 ../assembler/65816asm:; cd ../assembler; make
-compiler: asm.lisp c.lisp c-impl.lisp compiler.lisp lib.lisp package.lisp Makefile
+compiler: $(LISP) Makefile
 	sbcl --noinform \
              --eval "(defvar *script?* nil)" \
              --script "compiler.lisp"
@@ -23,5 +26,5 @@ colors.asm: inputs/colors.asm; cp $< $@
 
 colors: colors.smc; snes9x colors.smc
 c: c.smc
-	cp *.smc /home/ben/tmp/hydra-parker/www-home/hacking
+	#cp *.smc /home/ben/tmp/hydra-parker/www-home/hacking
 	snes9x c.smc

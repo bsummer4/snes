@@ -93,14 +93,16 @@ are:
            (front::global-variable-declaration ,name ,type)
            ,(when value
                   `(front::global-variable-initialization ,name ,value))))
-       ((c::proto name) -> front::proto)
+       ((c::proto name type args) -> front::proto)
        ((c::proc (name type) args &body code)
         -> `(front::proc ,name ,type ,args
                          ,(apply-pass
                            (c-proc (taggify-form
                                     `(progn ,@code)
                                     'toplevel))
-                           'toplevel)))))
+                           'toplevel)))
+       ((c::interrupt-handler name &body code)
+        -> front::interrupt-handler)))
 
 "TODO predicates defined later have higher priority.  "
 (define-predicated-transformation (pass-to-front

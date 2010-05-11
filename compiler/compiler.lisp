@@ -14,6 +14,12 @@ loading this file.  Otherwise we simply run the c-compiler as script.
 
 (in-package :cs400-compiler)
 
+(defun repl ()
+  (let ((eof '#.(gensym "EOF-")))
+    (loop for x = (read *standard-input* nil eof)
+       until (eq x eof) do (eval x)
+       do (force-output))))
+
 (defun main (args)
   (declare (ignore args))
   (repl)

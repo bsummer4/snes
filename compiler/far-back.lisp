@@ -18,6 +18,7 @@ comment                    -> code comment
     (far-back::funcall)
     (far-back::label name)
     (far-back::goto name)
+    (far-back::comment str)
     (far-back::goto-if-not)
     (far-back::goto-if-<)
     (far-back::goto-if->)
@@ -25,8 +26,8 @@ comment                    -> code comment
     (far-back::goto-if->=)
     (far-back::goto-if-==)
     (far-back::goto-if-!=)
-    (far-back::load-local-variable)
-    (far-back::store-local-variable)
+    (far-back::load-variable)
+    (far-back::store-variable)
     (far-back::load-number)
     (far-back::local-variable-initialization)
     (far-back::local-variable-declaration)))
@@ -40,11 +41,13 @@ comment                    -> code comment
          (let ((tagged (taggify-form body 'far-back)))
            `(progn
               (instantiate-fn ',name ',return-type)
+              (16-bit-mode)
               ,(progn-clean
                 (preexpand
-                 (multiple-value-call #'handle-variables
-                   (apply-pass tagged 'far-back)
-                   (stack-analyze args tagged))))))))))
+                 ;; Need to fudge labels to avoid conflicts!
+                  (multiple-value-call #'handle-variables
+                    (apply-pass tagged 'far-back)
+                    (stack-analyze args tagged))))))))))
 
 (defun %jsr (function-name)
   (asm :jsr :absolute (c-fn-unique-name function-name)))
@@ -69,9 +72,17 @@ comment                    -> code comment
              (when (numberp arg)
                (collect `(%load-number ,arg)))
              (when (symbolp arg)
-               (collect `(tag:tag '(far-back::load-local-variable ,arg))))
+               (collect `(tag:tag '(far-back::load-variable ,arg))))
              (collect `(%store-addr ,(1- (* 2 i)) :stack)))
      (%jsr ',function)))
+
+
+(define-tag-substitution (_comment
+                          far-back::comment
+                          far-back)
+    (str)
+  (declare (string str))
+  `(%comment ,str))
 
 (define-tag-substitution (var-init
                           far-back::local-variable-initialization
@@ -80,7 +91,7 @@ comment                    -> code comment
   (declare (integer value))
   `(progn
      (%load-number ,value)
-     (tag:tag '(far-back::store-local-variable ,name))))
+     (tag:tag '(far-back::store-variable ,name))))
 
 (define-tag-substitution (ignore-var-decr
                           far-back::local-variable-declaration
@@ -91,55 +102,55 @@ comment                    -> code comment
 "# Stack Stuff"
 (defun handle-variables (code stack-size variable-spaces)
   "Replace all references to variables with references to their stack
-   address.  This happens in load/store-local-variable and in
+   address.  This happens in load/store-variable and in
    operators.  Operators are transformed in the following ways:
 
      (far-back::OP x) => (%OP (stack ADDR))
      (far-back::OP 3) => (%OP 3)"
-  (labels ((var-or-bitch (id)
-             (aif (assoc id variable-spaces)
-                  (cdr it)
-                  (error "No local variable named ~a" id)))
-           (annotate (operand)
-             (typecase operand
-               (number operand)
-               (symbol `'(:stack ,(var-or-bitch operand))))))
+  (labels ((var (id) (aif (assoc id variable-spaces)
+                          (list :stack (cdr it))
+                          (aif (gethash id (.globals *compiler*))
+                               (list :global (c-variable-address it))
+                               (error "Unbound Variable ~a" id))))
+           (anno (operand) (typecase operand
+                             (number operand)
+                             (symbol `',(var operand)))))
     `(progn
        (%grow-stack ,stack-size)
        ,(tag:replace
          (fn1 (fare-matcher:match !1
-                (`(far-back::load-local-variable ,id)
-                  `(%load-addr ,(var-or-bitch id) :stack))
-                (`(far-back::store-local-variable ,id)
-                  `(%store-addr ,(var-or-bitch id) :stack))
+                (`(far-back::load-variable ,id)
+                  `(%load-addr ,@(reverse (var id))))
+                (`(far-back::store-variable ,id)
+                  `(%store-addr ,@(reverse (var id))))
 
                 (`(far-back::goto-if-not ,(and val (of-type integer)) ,label)
                   (when (zerop val)
-                    `(%goto label)))
+                    `(%goto ',label)))
                 (`(far-back::goto-if-not ,id ,label)
-                  `(%goto-if-not ,(annotate id) ',label))
+                  `(%goto-if-not ,(anno id) ',label))
 
                 (`(far-back::goto-if-> ,x ,y ,label)
                   (unless (and (numberp x) (numberp y) (<= x y))
-                    `(%goto-if-> ,(annotate x) ,(annotate y) ',label)))
+                    `(%goto-if-> ,(anno x) ,(anno y) ',label)))
                 (`(far-back::goto-if->= ,x ,y ,label)
                   (unless (and (numberp x) (numberp y) (< x y))
-                    `(%goto-if->= ,(annotate x) ,(annotate y) ',label)))
+                    `(%goto-if->= ,(anno x) ,(anno y) ',label)))
                 (`(far-back::goto-if-< ,x ,y ,label)
                   (unless (and (numberp x) (numberp y) (>= x y))
-                    `(%goto-if-< ,(annotate x) ,(annotate y) ',label)))
+                    `(%goto-if-< ,(anno x) ,(anno y) ',label)))
                 (`(far-back::goto-if-<= ,x ,y ,label)
                   (unless (and (numberp x) (numberp y) (> x y))
-                    `(%goto-if-<= ,(annotate x) ,(annotate y) ',label)))
+                    `(%goto-if-<= ,(anno x) ,(anno y) ',label)))
 
                 (`(far-back::increment ,x)
-                  `(%inc ,(annotate x)))
+                  `(%inc ,(anno x)))
                 (`(far-back::decrement ,x)
-                  `(%dec ,(annotate x)))
+                  `(%dec ,(anno x)))
                 (`(far-back::- ,x ,y)
-                  `(%- ,(annotate x) ,(annotate x)))
+                  `(%- ,(anno x) ,(anno x)))
                 (`(far-back::+ ,x ,y)
-                  `(%+ ,(annotate x) ,(annotate y)))
+                  `(%+ ,(anno x) ,(anno y)))
 
                 (* !1)))
          code)

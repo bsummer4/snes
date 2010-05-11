@@ -1,7 +1,10 @@
-(cl:defmacro c::++ (x) `(c-++ ,x))
-(cl:defmacro c::8-bit-mode () `(s::8-bit-mode))
-(cl:defmacro c::16-bit-mode () `(s::16-bit-mode))
-(cl:in-package :c)
+(in-package :c)
+
+(cl:defmacro 8-bit-mode () `(s::8-bit-mode))
+(cl:defmacro 16-bit-mode () `(s::16-bit-mode))
+(cl:defmacro funcall (f) `(s::%jsr ',f))
+(cl:defmacro => (var) `(far-back::store-variable ,var))
+(cl:defmacro finalize () `(s::vector-table))
 
 [#LoROM]
 [#Data l Zero]
@@ -10,7 +13,7 @@
 [#Data w pong_pallet]
 [#File reset.asm]
 
-(proto set_background_color)
+(proto set_background_color void ())
 
 (proc (cg_dma int) (status b-bus a-bank a-bus cg-addr num-bytes)
   (8-bit-mode)
@@ -55,13 +58,13 @@
 (proc (main int) ()
   (var hack int)
   [LDA #pong_pallet]
-  (s::A-> hack)
+  (=> hack)
   (cg_dma #x0002 #x0022 #x0000 hack #x0000 #x0200)
   [LDA #pong_char]
-  (s::A-> hack)
+  (=> hack)
   (vm_dma #x0001 #x0018 #x0000 hack #x0000 #x0800)
   [LDA #pong_frame]
-  (s::A-> hack)
+  (=> hack)
   (vm_dma #x0001 #x0018 #x0000 hack #x0400 #x0800)
 
   (8-bit-mode)
@@ -83,28 +86,24 @@
   (var color int 0)
   (while 1
     "Get input from the controller"
-    (s::asm s::lda :absolute #x4218)
-    (if (s::asm s::and :immediate-w #x0100) ;; is right button depressed?
-       (++ color)
-       color)
-    (set_background_color color #x0000)
-    ))
-
+    [LDA $4218]
+    (if [AND #$0100w] ;; is right button depressed?
+        (++ color)
+        color)
+    (set_background_color color #x0000)))
 
 (proc (set_background_color void) (color color_address)
   color_address
   (8-bit-mode)
-  (s::asm s::sta :absolute #x2121)
+  [STA $2121w]
   (16-bit-mode)
 
   color
   (8-bit-mode)
-  (s::asm s::sta :absolute #x2122)
-  (s::asm s::xba :implied)
-  (s::asm s::sta :absolute #x2122)
+  [STA $2122w]
+  [XBA]
+  [STA $2122w]
   (16-bit-mode))
-
-(cl:in-package :s)
 
 (interrupt-handler :reset
   [SEI]
@@ -121,11 +120,10 @@
   [JSR Reset.VRAM]
   [JSR Reset.OAM]
   [JSR Reset.CGRAM]
-  (c-funcall c::main))
+  (funcall main))
 
 [#Data l Zero {$0000}]
 [#Data w pong_char {#pongChar.dat}]
 [#Data w pong_frame {#pongFrame.dat}]
 [#Data w pong_pallet {#pongPallet.dat}]
-
-(vector-table)
+(finalize)

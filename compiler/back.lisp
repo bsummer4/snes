@@ -28,13 +28,13 @@ TODO ++, -- need to be moved to the end of an expression
 (memoize:def-memoized-function temporary-variable (number)
   "Returns a gensymed symbol.  Always returns the same symbol (EQ)
    given the same input.  "
-  (gensym (format nil "TEMP-~d-" number)))
+  (gensym (format nil "TEMP_~d-" number)))
 
 (defmacro spill (temp-var-num)
   (let ((var (temporary-variable temp-var-num)))
     `(progn
        (far-back::local-variable-declaration ,var c::int)
-       (far-back::store-local-variable ,var))))
+       (far-back::store-variable ,var))))
 
 (defun primitive? (x)
   (typecase x (symbol t) (number t)
@@ -89,14 +89,14 @@ TODO ++, -- need to be moved to the end of an expression
                                    back)
     (head &rest tail)
   "Any tagged forms we don't otherwise handle are simply passed off
-  to the 'back pass.  "
+   to the 'back pass.  "
   `(,(back->far-back head) ,@tail))
 
 (define-tag-substitution (expr back::expr back)
     (expr &optional (used-temps 0))
   (fare-matcher:match expr
     ((of-type number) `(far-back::load-number ,expr))
-    ((of-type symbol) (when expr `(far-back::load-local-variable ,expr)))
+    ((of-type symbol) (when expr `(far-back::load-variable ,expr)))
     ((of-type string) `(far-back::comment ,expr))
     ((list* (and operator
                  (when (member operator +back-operator-names+)))
@@ -110,12 +110,12 @@ TODO ++, -- need to be moved to the end of an expression
          (if (symbolp x)
              `(progn
                 (expr ,y ,used-temps)
-                (far-back::store-local-variable ,x))
+                (far-back::store-variable ,x))
              (error
               "We don't handle non-trivial left-hand-sides.  So '~s is invalid.  "
               expr)))
        (`(&& ,x ,y)
-         (with-gensyms ((skip "and-skip"))
+         (with-gensyms ((skip "and_skip"))
            `(progn
               (expr (goto-if-not ,x ,skip) ,used-temps)
               (expr ,y ,used-temps)
@@ -125,7 +125,7 @@ TODO ++, -- need to be moved to the end of an expression
        ;; TODO (`(or ,x ,y)
 
        (`(< ,x ,y)
-         (with-gensyms ((skip "compare-skip") (end "compare-end"))
+         (with-gensyms ((skip "compare_skip") (end "compare_end"))
            `(progn
               (expr (goto-if->= ,x ,y ,skip) ,used-temps)
               (expr 1)

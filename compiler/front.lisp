@@ -53,6 +53,28 @@ TODO Handle front::block
               ,(mapcar #'first +front-tags+))))
 
 "# Utillity Functions"
+(defun fudge-labels (code)
+  (let ((table))
+    (flet ((replace-label (form)
+             (fare-matcher:match form
+               (`(c::label ,label)
+                 (let ((n (gensym (symbol-name label))))
+                   (if (assoc label table)
+                       (error "Multiply defined label ~a" label)
+                       (push (cons label n) table))
+                   `(%label ',n)))
+               (* form)))
+           (replace-goto (form)
+             (fare-matcher:match form
+               (`(c::goto ,label)
+                (aif (assoc label table)
+                     `(%goto ',(cdr it))
+                     (error "goto points to non-existaint label ~a" label)))
+               (* form))))
+      (tree-walk #'replace-goto
+                 (tree-walk #'replace-label
+                            code)))))
+
 (defun symbol-in-package? (symbol package)
   (eq (symbol-package symbol) (find-package package)))
 
@@ -173,6 +195,14 @@ TODO Handle front::block
 (always-eval
   #.`(define-pass front
        ,@(mapcar #'list +front-tags+)
+       ((front::global-variable-declaration name type)
+        -> `(alloc-variable ',name ',type))
+       ((front::global-variable-initialization name value)
+        -> `(init-variable ',name ',value))
+       ((front::proto name type args)
+        -> `(prototype-fn ',name ',type))
+       ((front::interrupt-handler name &body code)
+        -> `(interrupt-handler ,name (progn ,@code)))
        ((front::proc name return-type args body)
         -> `(back::proc ,name ,return-type ,args
                         ,(preexpand
@@ -180,8 +210,6 @@ TODO Handle front::block
                              ,(annotate-functions-and-variables
                                (apply-pass (taggify-form (returnify body) 'front)
                                            'front))))))))
-
-
 "# Pass Transformations"
 (define-predicated-transformation (front-passthrough
                                    #l(let ((first (first !1)))
@@ -219,6 +247,8 @@ TODO Handle front::block
     (`(front::<= ,x ,y) `(front::goto-if-> ,x ,y ,label))
     (`(front::== ,x ,y) `(front::goto-if-!= ,x ,y ,label))
     (`(front::!= ,x ,y) `(front::goto-if-== ,x ,y ,label))
+    (`(emit ,str) `(progn (emit ,str)
+                          (%branch-if-not ',label)))
     (* `(front::goto-if-not ,expr ,label))))
 
 (define-tag-substitution (c-if front::if front)
@@ -234,7 +264,7 @@ TODO Handle front::block
 
 (define-tag-substitution (c-while front::while front)
     (test &body code)
-  (with-gensyms ((top "while_label_top") (end "while_label_end"))
+  (with-gensyms ((top "while_top") (end "while_end"))
     `(with-break ,end
        (with-continue ,top
          (with-indent "_while"
@@ -247,8 +277,8 @@ TODO Handle front::block
 
 (define-tag-substitution (c-do-while front::do-while front)
     (test &body body)
-  (with-gensyms ((top "dowhile_label_repeat")
-                 (end "dowhile_label_end"))
+  (with-gensyms ((top "dowhile_repeat")
+                 (end "dowhile_end"))
     `(with-break ,end
        (with-continue ,top
          (with-indent "_do_while"
@@ -288,3 +318,56 @@ TODO Handle front::block
            (with-indent _switch_targets
              ,@(mapcar #'make-switch-target labels codes))
            (back::label ,switch_end))))))
+
+
+
+"Interrupt Handling"
+(defparameter *defined-interrupt-handlers* nil)
+(defparameter *reset-table-written?* nil)
+(define-constant +interrupts+ '(:reset :irq :bk :cop :abort :nmi))
+
+;; The $80 $FE Causes an infinite loop.  For debugging, this is better
+;; than undefined behavior, as all non-handeled interrupts jump there.
+(define-constant +interrupt-handler-positions+
+  '("$80 $FE" :empty :cop   :brk   :abort :nmi   :empty :irq
+    :empty    :empty :empty :empty :empty :empty :reset :empty))
+
+(deftype interrupt-handler-name () (cons 'member +interrupts+))
+
+(defun get-interrupt-name (name)
+  (declare (type interrupt-handler-name name))
+  (symbol-name name))
+
+(defun vector-table ()
+  (unless (member :reset *defined-interrupt-handlers*)
+    (error "You must have a handler for the reset interrupt.  "))
+  (emit (format nil
+                "#Data $00:FFE0 interrupt_vector {~{~a~^~%~a~}}"
+                (iter (for interrupt in +interrupt-handler-positions+)
+                      (collect
+                          (cond
+                            ((stringp interrupt)
+                             interrupt)
+                            ((member interrupt *defined-interrupt-handlers*)
+                             (get-interrupt-name interrupt))
+                            (t "$FFE0")))
+                      (collect "                                   ")))))
+
+(defmacro interrupt-handler (name code)
+  (declare (type interrupt-handler-name name))
+  (let* ((unique-name (get-interrupt-name name)))
+    (if (member name *defined-interrupt-handlers*)
+        (error "Multiple definitions of interrupt-handler ~a"
+               unique-name)
+        (push name *defined-interrupt-handlers*))
+    `(progn
+       (%asm-code ',(intern unique-name))
+       ,(fudge-labels code)
+       [RTI])))
+
+(defun finalize ()
+  (loop for x being the hash-keys of (.globals *compiler*)
+     do (aif (and (typep (get-id x) 'c-variable)
+                  (c-variable-initial-value (get-var x)))
+             (format *error-output* "{Initial-value:  ~s <- ~s}~%" x it)))
+  (vector-table))

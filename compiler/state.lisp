@@ -3,19 +3,17 @@
 (defstruct transformation predicate function)
 (defstruct compiler-pass name tags macros transformations)
 (defstruct c-variable
-  (type nil            :read-only t :type (eql c::int))
+  (type nil            :read-only t :type (member c::int c::void))
   (address nil         :read-only t :type (or symbol fixnum))
-  (addressing-mode nil :read-only t :type keyword))
+  initial-value)
 
 (defstruct c-function
   (type      nil :read-only t   :type t)
   (asm-name  nil :read-only t   :type symbol)
   (prototype nil :read-only nil :type boolean))
 
-(defun c-variable (address addressing-mode)
-  (make-c-variable :type 'c::int
-                   :address address
-                   :addressing-mode addressing-mode))
+(defun c-variable (type address)
+  (make-c-variable :type type :address address))
 
 (defun c-function (prototype? type name)
   (declare (symbol name) (boolean prototype?))
@@ -26,11 +24,16 @@
 
 (defclass compiler ()
   ((passes :accessor .passes :initform (make-hash-table))
-   (globals :accessor .globals :initform (make-hash-table))))
+   (globals :accessor .globals :initform (make-hash-table))
+   (next-available-address :accessor .next :initform #x0100)))
 
 (defparameter *compiler* (make-instance 'compiler))
 
 "# Convient access to compiler state"
+(defun alloc (size)
+  (prog1 (.next *compiler*)
+    (incf (.next *compiler*) size)))
+
 (defun get-id (identifier)
   "Returns NIL if unbound"
   (declare (symbol identifier))
@@ -42,11 +45,32 @@
   (setf (gethash identifier (.globals *compiler*))
         value))
 
+(defun type->size (type)
+  (match type
+    ('c::int 2)
+    ('c::void 0)
+    (_ (error "Unknown type: ~a" type))))
+
+(defun set-var (id var)
+  (etypecase (get-id id)
+    (c-variable (error "Redefining variable ~a" id))
+    ((eql nil) (setf (gethash id (.globals *compiler*)) var))
+    (t (error "~a is bound so somthing that's not a variable" id))))
+
 (defun get-var (identifier)
-  (etypecase (get-id identifier)
-    (c-variable identifier)
-    ((eql nil) (error "Unbound identifier ~a" identifier))
-    (t (error "~a is bound so somthing that's not a variable" identifier))))
+  (let ((it (get-id identifier)))
+    (etypecase it
+      (c-variable it)
+      ((eql nil) (error "Unbound identifier ~a" identifier))
+      (t (error "~a is bound so somthing that's not a variable" identifier)))))
+
+(defun alloc-variable (name type)
+  (set-var name
+           (c-variable type (alloc (type->size type)))))
+
+(defun init-variable (name value)
+  (setf (c-variable-initial-value (get-var name))
+        value))
 
 (defun get-transformations (pass-name)
   (compiler-pass-transformations
