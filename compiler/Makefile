@@ -26,5 +26,5 @@ colors.asm: inputs/colors.asm; cp $< $@
 
 colors: colors.smc; snes9x colors.smc
 c: c.smc
-	#cp *.smc /home/ben/tmp/hydra-parker/www-home/hacking
+	cp inputs/c c.asm c.smc /home/ben/tmp/hydra-parker/www-home/hacking
 	snes9x c.smc

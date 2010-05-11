@@ -47,7 +47,8 @@ comment                    -> code comment
                  ;; Need to fudge labels to avoid conflicts!
                   (multiple-value-call #'handle-variables
                     (apply-pass tagged 'far-back)
-                    (stack-analyze args tagged))))))))))
+                    (stack-analyze args tagged))))
+              [RTS]))))))
 
 (defun %jsr (function-name)
   (asm :jsr :absolute (c-fn-unique-name function-name)))
@@ -180,7 +181,7 @@ comment                    -> code comment
 
 (defun variables-to-addresses (variables initial-offset)
   (let ((offset initial-offset))
-    (iter (for v in variables)
+    (iter (for v in (reverse variables))
           (collect (cons v (prog1
                                offset
                              (incf offset 2)))))))
