@@ -1,0 +1,17 @@
+CC = gcc
+LD = gcc
+CFLAGS = -O3 -std=gnu99 -Wall -pedantic
+
+all:V: 65816asm
+clean:V:
+	rm -f *.o 65816asm o.65816asm
+
+main.o: assembler.h data.h
+65816asm: o.65816asm
+	ln -f o.$target $target
+
+o.%: %.o
+	$LD $prereq -o $target
+
+%.o: %.c
+	$CC $CFLAGS -c $stem.c

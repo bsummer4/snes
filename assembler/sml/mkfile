@@ -1,0 +1,19 @@
+TMP = foo.sml foo
+GEN = asm.lex.sml
+OUT = asm
+
+all:V: asm
+clean:V:
+	rm -f $TMP $GEN $OUT
+
+test:V: asm.lex.sml
+	echo $foo | sml asm.lex.sml asm.sml
+
+asm: asm.lex.sml asm.sml
+	cat $prereq > foo.sml
+	mlton foo.sml
+	rm foo.sml
+	mv foo asm
+
+%.lex.sml: %.lex
+	mllex $stem.lex

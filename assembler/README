@@ -512,9 +512,3 @@ respective direction is found.
 
 The link name is unique in that its namespace is augmented to include
 '+' and '-' as well.
-
-## Math
-- Reserved for future expansion.
-
-# Technical Details
-- 65816 Assembler is written in C.
