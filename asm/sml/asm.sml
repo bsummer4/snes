@@ -8,7 +8,7 @@ fun getc s =
 
 val lexer = L.makeLexer (fn n => getc TextIO.stdIn)
 fun newline () = print "\n"
-fun println x = (print x; newline ())
+fun println x = (print ("LEX: " ^ x); newline ())
 fun printToks () =
   let fun r U.EOF = ()
         | r _ = printToks ()

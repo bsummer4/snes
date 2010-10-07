@@ -6,7 +6,8 @@ datatype lexresult = EOF | LINE of int | WORD of string |
                      NUMBER of string | SYMBOL of char |
                      STRING of string
 
-val lineNum = ref 1
+val lineCount = ref 1
+val charCount = ref 0
 fun unquote s =
   let fun i r (#"\""::[]) = r
         | i r (#"\\"::(#"\\"::xs)) = i (#"\\"::r) xs
@@ -29,6 +30,18 @@ fun anno EOF = "eof"
   | anno (SYMBOL x) = "symbol: " ^ str x
   | anno (STRING x) = "string: " ^ x
 
+fun accept s =
+  let fun r [] = ()
+        | r (#"\n"::xs) = (inc lineCount; charCount:=0; r xs)
+        | r (_::xs) = (inc charCount; r xs)
+  in r (explode s)
+  end
+
+fun wtf s =
+  print (concat [ Int.toString (!lineCount), ":", Int.toString (!charCount)
+                , " lexing failed at: ", s, "\n"
+                ])
+
 fun unstr s =
   case explode s
    of [x] => x
@@ -38,11 +51,15 @@ fun unstr s =
 hexdigit = [0-9A-F];
 wordchar = [a-zA-Z0-9_.];
 special = [*+\-\=#{}(),\\/];
-foo = [a-z];
+colon = [:];
+dq = ["];
+bq = [\]
+dot = [.];
 %%
-\n => (inc lineNum; LINE ((!lineNum)-1));
-[%$]?(:|{hexdigit})+[bwl]? => (NUMBER yytext);
-[A-Za-z_.]{wordchar}* => (WORD yytext);
-([\]\[]|{special}) => (SYMBOL (unstr yytext));
-\"(\\.|[^\\"])*\" => (STRING (unquote yytext));
-. => (print ("wtf is: " ^ yytext ^ "\n"); lex ());
+"\n" => (accept yytext; LINE ((!lineCount)-1));
+[A-Za-z_.]{wordchar}* => (accept yytext; WORD yytext);
+[%$:0-9]?({hexdigit}|{colon})+[bwl]? => (accept yytext; NUMBER yytext);
+([\]\[]|{special}) => (accept yytext; SYMBOL (unstr yytext));
+{dq}(({bq}.)|[^\\"])*{dq} => (accept yytext; STRING (unquote yytext));
+" " => (accept yytext; lex ());
+. => (accept yytext; wtf yytext; lex ());
