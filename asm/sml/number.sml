@@ -3,21 +3,21 @@ fun neq x y = (x <> y)
 fun protect (SOME x) _ = x
   | protect NONE f = f ()
 
-signature NUMBER_PARSE = sig
+signature NUMBER = sig
  datatype size = BYTE | WORD | LONG
- datatype reason = VALUE_TOO_LARGE | INVALID_LENGTH | INVALID_CHARS
-                 | NONMATCHING_SIZETAG | SIZETAG_TOO_SMALL
- exception Failure of string * reason
  type t = {size: size, value: int}
  val parse : string -> t
+ datatype reason = VALUE_TOO_LARGE | INVALID_LENGTH | BAD_DIGITS
+                 | NONMATCHING_SIZETAG | SIZETAG_TOO_SMALL
+ exception ParseFailure of string * reason
 end
 
-structure NumberParse: NUMBER_PARSE = struct
+structure Number: NUMBER = struct
  datatype base = DEC | HEX | BIN
  datatype size = BYTE | WORD | LONG
- datatype reason = VALUE_TOO_LARGE | INVALID_LENGTH | INVALID_CHARS
+ datatype reason = VALUE_TOO_LARGE | INVALID_LENGTH | BAD_DIGITS
                  | NONMATCHING_SIZETAG | SIZETAG_TOO_SMALL
- exception Failure of string * reason
+ exception ParseFailure of string * reason
  type t = {size: size, value: int}
 
  structure C = StringCvt
@@ -27,6 +27,7 @@ structure NumberParse: NUMBER_PARSE = struct
       of NONE => NONE
        | SOME (n,[]) => SOME n
        | SOME (_,_) => NONE
+       handle Overflow => NONE
   end
 
  fun split s =
@@ -49,7 +50,7 @@ structure NumberParse: NUMBER_PARSE = struct
   else NONE
 
  fun parse str =
-  let fun fail r = raise (Failure (str,r))
+  let fun fail r = raise (ParseFailure (str,r))
       val (base,content,sizeTag) = split (explode str)
       val impliedSize =
        case (base, length content)
@@ -59,7 +60,7 @@ structure NumberParse: NUMBER_PARSE = struct
          | (BIN,_) => fail INVALID_LENGTH
          | (HEX,_) => fail INVALID_LENGTH
          | (DEC,_) => NONE
-      val value = protect (numVal base content) (fn()=>fail INVALID_CHARS)
+      val value = protect (numVal base content) (fn()=>fail BAD_DIGITS)
       val smallestFit = protect (smallestFit value) (fn()=>fail VALUE_TOO_LARGE)
       val size =
        case (impliedSize, sizeTag)
@@ -73,10 +74,8 @@ structure NumberParse: NUMBER_PARSE = struct
   end
 end
 
-structure N = NumberParse
-
-val f = N.parse
+val f = Number.parse
 
 ;
-; f "254w"
+; f "23:54w"
 ;
