@@ -1,5 +1,3 @@
-fun inc x = (x := 1+(!x))
-
 exception InternalError
 exception InvalidQuotedCharacter of char
 datatype lexresult = EOF | LINE of int | WORD of string |
@@ -36,8 +34,8 @@ fun anno EOF = "eof"
 
 fun accept s =
   let fun r [] = ()
-        | r (#"\n"::xs) = (inc lineCount; charCount:=0; r xs)
-        | r (_::xs) = (inc charCount; r xs)
+        | r (#"\n"::xs) = (U.inc lineCount; charCount:=0; r xs)
+        | r (_::xs) = (U.inc charCount; r xs)
   in (print (s^"\n"); r (explode s); ())
   end
 

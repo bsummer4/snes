@@ -1,8 +1,3 @@
-fun eq x y = (x = y)
-fun neq x y = (x <> y)
-fun protect (SOME x) _ = x
-  | protect NONE f = f ()
-
 signature NUMBER = sig
  datatype size = BYTE | WORD | LONG
  type t = {size: size, value: int}
@@ -39,7 +34,7 @@ structure Number: NUMBER = struct
          fun prefix (#"%"::xs) = rest (BIN,[]) xs
            | prefix (#"$"::xs) = rest (HEX,[]) xs
            | prefix xs = rest (DEC,[]) xs
-     in case prefix s of (a,b,c) => (a,List.filter (neq #":") b,c)
+     in case prefix s of (a,b,c) => (a,List.filter (U.neq #":") b,c)
      end
 
  fun sizeInBytes x = case x of BYTE=>1 | WORD=>2 | LONG=>3
@@ -60,8 +55,9 @@ structure Number: NUMBER = struct
          | (BIN,_) => fail INVALID_LENGTH
          | (HEX,_) => fail INVALID_LENGTH
          | (DEC,_) => NONE
-      val value = protect (numVal base content) (fn()=>fail BAD_DIGITS)
-      val smallestFit = protect (smallestFit value) (fn()=>fail VALUE_TOO_LARGE)
+      val value = U.protect (numVal base content) (fn()=>fail BAD_DIGITS)
+      val smallestFit = U.protect (smallestFit value)
+                          (fn()=>fail VALUE_TOO_LARGE)
       val size =
        case (impliedSize, sizeTag)
         of (NONE, SOME x) => x
