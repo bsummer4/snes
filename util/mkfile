@@ -2,13 +2,16 @@ CC = gcc
 LD = gcc
 CFLAGS = -O3 -std=gnu99 -Wall -pedantic
 
-all:V: 65816asm
+all:V: 65816a
 clean:V:
-	rm -f *.o 65816asm o.65816asm
+	rm -f *.o 65816a o.65816asm
+
+install:V: all
+	cp 65816a /usr/local/bin/65816a
 
 main.o: assembler.h data.h
-65816asm: o.65816asm
-	ln -f o.$target $target
+65816a: o.65816asm
+	ln -f $prereq $target
 
 o.%: %.o
 	$LD $prereq -o $target

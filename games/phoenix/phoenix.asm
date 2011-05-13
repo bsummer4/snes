@@ -2908,10 +2908,10 @@ m x  16-bit Accumulator, 16-bit Indexes
 
 
 
-    ; #Data l Char_Data    {#Phoenix_Char.dat}
-    ; #Data l Frame_BG_Map {#Phoenix_Frame_BG_Map.dat}
-    ; #Data l Star_BG_Map  {#Phoenix_Star_BG_Map.dat}
-    ; #Data l Color_Data   {#Phoenix_Color.dat}
+    ; #Data l Char_Data    {#char.dat}
+    ; #Data l Frame_BG_Map {#frame_bg_map.dat}
+    ; #Data l Star_BG_Map  {#star_bg_map.dat}
+    ; #Data l Color_Data   {#color.dat}
 
 
 
