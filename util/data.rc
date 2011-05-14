@@ -15,7 +15,7 @@ awk -F'	' '
 		if (NR==1) printf("{ "); else printf(", ")
 		printf("%4s_ // %2d | %7s | %s\n",tolower($1),NR-1,$2,$3) }
 	END { print "};" }
-' < addressing-modes
+' <modes
 
 echo;
 
@@ -31,4 +31,4 @@ awk '
 			else { printf("0x"); printf(fmt,$i) }}
 		printf("},\n") }
 	END { print "};" }
-' <inst
+' <instr

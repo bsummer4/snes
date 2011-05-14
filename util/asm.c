@@ -1,6 +1,6 @@
 #include <stdbool.h>
 #include <assert.h>
-#include "assembler.h"
+#include "asm.h"
 
 #define ITER(VAR, FROM, BELOW) for (int VAR = FROM; VAR<BELOW; VAR++)
 #define FORII(BELOW) ITER(ii, 0, BELOW)

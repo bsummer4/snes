@@ -1,18 +1,15 @@
 CFLAGS = -O3 -Wall -pedantic
 
-all:V: 65816a
+all:V: o.asm
 clean:V:
-	rm -f *.o 65816a o.65816asm data.h
+	rm -f *.o o.* data.h
 
 install:V: all
-	cp 65816a /usr/local/bin/65816a
+	cp o.asm /usr/local/bin/65816a
 
+main.o: asm.h data.h
 data.h: data.rc
 	./data.rc >$target
-
-main.o: assembler.h data.h
-65816a: o.65816asm
-	ln -f $prereq $target
 
 o.%: %.o
 	c99 $prereq -o $target
