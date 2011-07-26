@@ -9,30 +9,10 @@ powerful set of directives that make programming 65816 assembly a practical
 matter. The program was written with the Super Nintendo Entertainment System
 (SNES) in mind, and has facilities that ease programming for this platform.
 
-# Command Prompt
-The 65816 Assembler is a command prompt executable. A command string
-is used as the initial input for the program. The syntax of the space
-delimited string is:
+# Usage
+| 65816a [flags] infile outfile
 
-| [65816_Assembler.exe][in_file][-switch][-switch] ...
-
-Where the tokens are:
-
-| [65816_Assembler.exe] // The executable. Extension depends on system.
-| [in_file] // Name/pathname of primary source file.
-| [-switch] // Additional arguments. Indicated by `-' prefix.
-
-There is no limit to the number of switches. Valid switches are:
-
-| [-i][in_file]  // Include additional source file
-| [-0][out_file] // Explicitly declare out file name
-| [-r]           // Assembly report
-
-`-o' may only be used once. If no out file name is defined, the program
-uses as a template the primary in file name `in_file.???' and builds the
-out file name `in_file.smc'.
-
-File names must be valid names in the scope of the assembler.
+For now `-r' is the only valid flag. It generates an assembly report.
 
 # Format
 The main input of the 65816 Assembler is a formatted source text file
@@ -338,7 +318,6 @@ into the 5 subgroups by function, all of which are listed and detailed below:
 
 #### Flow
 | [;][#Halt]
-| [;][#File][in_file][,] ...
 
 #### Declaration
 | [;][#Name][addr][name][,] ...
@@ -399,12 +378,6 @@ or by incrementing it by `offset'. If `pad' is specified, the space between
 the current PC and new PC is padded with the data, else zero. The function
 takes into account the memory map being used. Note that the PC cannot be
 set to a lower value than the current PC.
-
-### File
-| Format: [;][#File][in_file][,] ...
-
-Includes the source file specified. Infinite assembler loops are prevented
-by nothing more than ROM overflow.
 
 ### Halt
 | Format: [;][#Halt]

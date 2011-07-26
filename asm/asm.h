@@ -85,7 +85,7 @@ typedef struct Dll_link_s {
 	int mode;
 } Dll_link_s;
 
-void First_Pass   (char *name);
+void First_Pass   ();
 void Do_Assembly  (File_s*);
 void Do_Compiler  (File_s*);
 void Do_Link      (File_s*);

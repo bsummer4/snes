@@ -1,5 +1,6 @@
 #include <stdbool.h>
 #include <assert.h>
+#include <err.h>
 #include "asm.h"
 
 #define ITER(VAR, FROM, BELOW) for (int VAR = FROM; VAR<BELOW; VAR++)
@@ -11,105 +12,49 @@
 */
 long PC = 0x000000;
 int Snes_f = 0;
-int Report_f = 0;
+bool Report_f = false;
 File_s *Out;
-Dll_n *Global_File, *Global_Code, *Global_Data, *Global_Name;
+char *Inf, *Outf;
+
+Dll_n *Global_Code, *Global_Data, *Global_Name;
 Dll_n *Global_Name_R, *Global_Link, *Global_Link_R;
-Dll_n **Global_Dlls[7] =
-	{ &Global_File, &Global_Code, &Global_Data, &Global_Name, &Global_Name_R
+Dll_n **Global_Dlls[6] =
+	{ &Global_Code, &Global_Data, &Global_Name, &Global_Name_R
 	, &Global_Link, &Global_Link_R };
 
 int main (int argc, char *argv[]) {
-	FORII(7) * Global_Dlls[ii] = Dll_New(Dll_head_t_);
-	char *s = NULL;
-	int i, j;
-	Dll_n *n;
+	FORII(6) * Global_Dlls[ii] = Dll_New(Dll_head_t_);
+	switch (argc) {
+	case 4:
+		if (strcmp(argv[1],"-r")) break;
+		Report_f=true,Inf=argv[2],Outf=argv[3]; goto ok;
+	case 3:
+		Inf=argv[1],Outf=argv[2]; goto ok; }
+	errx(1,"Usage: %s [-r] infile outfile", *argv);
 
-	if (argc < 2)
-		Error(0x02, 0x33, NULL, NULL);
-	if (!Is_Name(argv[1]))
-		Error(0x02, 0x16, NULL, (void *)argv[1]);
-
-	for (i = 2; i < argc; i++) {
-
-		if (!strcmp(argv[i], "-o")) {
-			if (s)
-				Error(0x02, 0x23, NULL, NULL);
-			if (++i >= argc)
-				Error(0x02, 0x35, NULL, NULL);
-			if (!Is_Name(argv[i]))
-				Error(0x02, 0x1D, NULL, (void *)argv[i]);
-			if (!(s = (char *)malloc(strlen(argv[i]) + 1)))
-				Error(0x02, 0x07, NULL, NULL);
-			s[0] = '\0';
-			strcat(s, argv[i]);
-			continue; }
-
-		if (!strcmp(argv[i], "-i")) {
-			if (++i >= argc)
-				Error(0x02, 0x34, NULL, NULL);
-			if (!Is_Name(argv[i]))
-				Error(0x02, 0x16, NULL, (void *)argv[i]);
-			n = Dll_New(Dll_file_t_);
-			strcat(((Dll_file_s *) n->data)->name, argv[i]);
-			Dll_Insert(Global_File, n);
-			continue; }
-
-		if (!strcmp(argv[i], "-r")) {
-			Report_f = 1;
-			continue; }
-		Error(0x02, 0x21, NULL, (void *)argv[i]); }
-
-	if (!s) {
-		for (i = 0;
-		     i < NAME_MAX - 4 && argv[1][i] != '.'
-		     && argv[1][i] != '\0'; i++) ;
-		if (!(s = (char *)malloc(i + 5)))
-			Error(0x02, 0x07, NULL, NULL);
-		s[0] = '\0';
-		strncat(s, argv[1], i);
-		strcat(s, ".smc"); }
-
-	Out = New_File(s, "wb");
-	free(s);
-	/* Push [in_file] */
-	n = Dll_New(Dll_file_t_);
-	strcat(((Dll_file_s *) n->data)->name, argv[1]);
-	Dll_Push(Global_File, n);
-
-	for (i = 0, j = Dll_Size(Global_File); i < j; i++) {
-		n = Dll_Pull(Global_File);
-		First_Pass(((Dll_file_s *) n->data)->name);
-		Dll_Free(n); }
-
+ok:
+	Out = New_File(Outf,"wb");
+	First_Pass();
 	Second_Pass();
 	Report();
-
 	Free_File(Out);
-	Dll_Free(Global_File);
-	Dll_Free(Global_Code);
-	Dll_Free(Global_Data);
-	Dll_Free(Global_Name);
-	Dll_Free(Global_Name_R);
-	Dll_Free(Global_Link);
-	Dll_Free(Global_Link_R); }
+	FORII(6) Dll_Free(*Global_Dlls[ii]); }
 
-void First_Pass (char *name) {
-	File_s *In; /* In file structure */
-	Stat_s *s; /* In file statistic */
-	FILE *f; /* In file stream */
-	Dll_n *n; /* Node */
-	Dll_file_s *d; /* Data */
-	char *t; /* Token */
-	char c;
+void First_Pass () {
+	/* `t' is the current input token. */
+	File_s *In;
+	Stat_s *s;
+	FILE *f;
+	Dll_n *n;
+	Dll_file_s *d;
+	char c, *t;
 
 	/* Open Input File */
 	n = Dll_New(Dll_file_t_);
 	d = (Dll_file_s *) n->data;
-	strcat(d->name, name);
-	Dll_Insert(Global_File, n);
+	strcat(d->name, Inf);
 
-	In = New_File(name, "r");
+	In = New_File(Inf, "r");
 	f = In->file;
 	t = In->line;
 	s = d->stat = In->stat;
@@ -197,10 +142,6 @@ void Second_Pass (void) {
 void Report (void) {
 	if (!Report_f)
 		return;
-	printf("================================\n"
-	       "| #File |\n"
-	       "================================\n");
-	Dll_Print(Global_File);
 	printf("================================\n"
 	       "| #Name |\n"
 	       "================================\n");
@@ -610,8 +551,6 @@ void Do_Directive (File_s * In) {
 		Dir_Cpu(In); /* ++ */
 	else if (!strcmp(ib, "PC"))
 		Dir_PC(In); /* ++ */
-	else if (!strcmp(ib, "File"))
-		Dir_File(In); /* ++ */
 	else if (!strcmp(ib, "LoROM") /* ++ */
 		 || !strcmp(ib, "HiROM"))
 		Dir_Rom(In); /* ++ */
@@ -909,22 +848,6 @@ void Dir_Data (File_s * In) {
 		ungetc(';', In->file);
 	return; }
 
-/* #File */
-void Dir_File (File_s * In) {
-	char *ib = In->line;
-
-	do {
-		In->stat->stmt_c++;
-		Get_Token(In);
-		if (In->type != Token_name_t_)
-			Error(0x0E, 0x16, In, ib); /* Invalid in file */
-		First_Pass(ib);
-		Get_Token(In);
-	} while (!strcmp(ib, ","));
-	if (!strcmp(ib, ";"))
-		ungetc(';', In->file);
-	return; }
-
 /* #Halt */
 void Dir_Halt (File_s * In) {
 	Second_Pass();
@@ -936,7 +859,6 @@ void Dir_Halt (File_s * In) {
 
 	/* Cleanup */
 	Free_File(Out);
-	Dll_Free(Global_File);
 	Dll_Free(Global_Code);
 	Dll_Free(Global_Data);
 	Dll_Free(Global_Name);
@@ -1141,9 +1063,6 @@ void Error (int program, int code, File_s * In, void *data) {
 		break;
 	case 0x0D:
 		printf("Dir_Data() : ");
-		break;
-	case 0x0E:
-		printf("Dir_File() : ");
 		break;
 	case 0x0F:
 		printf("Dir_Halt()\n");
