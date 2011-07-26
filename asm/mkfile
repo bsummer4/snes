@@ -9,8 +9,8 @@ install:V: all
 	cp o.asm $ipath/bin/65816a
 
 main.o: asm.h data.h
-data.h:D: data.rc
-	./data.rc >$target
+data.h:D: datagen
+	./datagen >$target
 
 o.%: %.o
 	c99 $prereq -o $target
