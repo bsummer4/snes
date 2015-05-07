@@ -1,0 +1,8 @@
+* Compiler
+** Progress; Working Demo (Pong)
+** Evolution of Goals
+** Group Organization
+** Implementation
+*** Current Implementation
+*** Evolution of Implementation
+*** Hardware
