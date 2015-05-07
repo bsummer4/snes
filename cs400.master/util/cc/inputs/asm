@@ -1,0 +1,4 @@
+(asm lda :absolute 3)
+(asm clc :implied)
+(asm adc :direct 4)
+(asm adc :immediate 4)

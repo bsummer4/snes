@@ -1,0 +1,18 @@
+CFLAGS = -O3 -Wall -pedantic
+
+all:V: o.asm
+clean:V:
+	rm -f *.o o.* data.h
+
+install:V: all
+	cp o.asm /usr/local/bin/65816a
+
+main.o: asm.h data.h
+data.h: data.rc
+	./data.rc >$target
+
+o.%: %.o
+	c99 $prereq -o $target
+
+%.o: %.c data.h
+	c99 $CFLAGS -c $stem.c

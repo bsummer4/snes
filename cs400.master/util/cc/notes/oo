@@ -1,0 +1,50 @@
+# OO
+
+Some ideas for a light Object system on top of c.
+
+# Inheritance
+
+Instead of inheritence, we simply support struct includes:
+
+    struct a { int one, two; }
+    struct b { struct a; int three; }
+    struct b b;
+    return b.one;
+
+Note that including any struct more than once is impossible since the
+namespace would have conflicts.  This lets us have simple method
+dispatch.
+
+# Methods
+
+Methods are definied externally to a struct.  Method dispatch is done
+at compile time, and doesn't change the meaning of structs in any way.
+Methods are simply dispatched to the closest possible match, where
+includes mentioned earlier in a struct are considered closer matches.
+
+    (generic + (a b -> c))
+    (method + ((a struct-a) (b struct-a) -> int)
+      (return 4))
+    (method + ((a struct-b) (b struct-b) -> int)
+      (return 5))
+    (var (a b) struct-a)
+    (var (c d) struct-b)
+    (+ a b) ;; => 4
+    (+ c d) ;; => 5
+    (+ a c) ;; => 4
+
+Here is some conceivable resulting c code:
+
+    struct a { int one, two; }
+    struct b { struct a __a; int three; } // __a is an include.
+    return b.one;
+
+    int plus_struct_a (struct a a, struct a b) {
+        return 4; }
+    int plus_struct_b (struct b a, struct b b) {
+        return 5; }
+    struct a a, b;
+    struct b c, d;
+    plus_struct_a(a, b)
+    plus_struct_b(c, d)
+    plus_struct_a(a, c.__a)

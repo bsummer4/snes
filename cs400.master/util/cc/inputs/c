@@ -1,0 +1,131 @@
+(cl:defmacro c::++ (x) `(c-++ ,x))
+(cl:defmacro c::8-bit-mode () `(s::8-bit-mode))
+(cl:defmacro c::16-bit-mode () `(s::16-bit-mode))
+(cl:in-package :c)
+
+[#LoROM]
+[#Data l Zero]
+[#Data w pong_char]
+[#Data w pong_frame]
+[#Data w pong_pallet]
+[#File reset.asm]
+
+(proto set_background_color)
+
+(proc (cg_dma int) (status b-bus a-bank a-bus cg-addr num-bytes)
+  (8-bit-mode)
+  cg-addr
+  [STA CGADD]
+  status
+  [STA DMAP] ;; DMA Status
+  b-bus
+  [STA DMAB]
+  a-bank
+  [STA DMAA.b]
+  (16-bit-mode)
+  a-bus
+  [STA DMAA]
+  num-bytes
+  [STA DMAD]
+  (8-bit-mode)
+  [LDA #$01]
+  [STA MDMAEN]
+  (16-bit-mode))
+
+(proc (vm_dma int) (status b-bus a-bank a-bus vm-addr num-bytes)
+  vm-addr
+  [STA VMADD]
+  (8-bit-mode)
+  status
+  [STA DMAP] ;; DMA Status
+  b-bus
+  [STA DMAB]
+  a-bank
+  [STA DMAA.b]
+  (16-bit-mode)
+  a-bus
+  [STA DMAA]
+  num-bytes
+  [STA DMAD]
+  (8-bit-mode)
+  [LDA #$01]
+  [STA MDMAEN]
+  (16-bit-mode))
+
+(proc (main int) ()
+  (var hack int)
+  [LDA #pong_pallet]
+  (s::A-> hack)
+  (cg_dma #x0002 #x0022 #x0000 hack #x0000 #x0200)
+  [LDA #pong_char]
+  (s::A-> hack)
+  (vm_dma #x0001 #x0018 #x0000 hack #x0000 #x0800)
+  [LDA #pong_frame]
+  (s::A-> hack)
+  (vm_dma #x0001 #x0018 #x0000 hack #x0400 #x0800)
+
+  (8-bit-mode)
+  "Set screen to max brightness"
+  [LDA #$0F]
+  [STA INIDISP]
+  "Graphics Mode 1"
+  [LDA #$01]
+  [STA BGMODE]
+  ""
+  [LDA #$04]
+  [STA BG1SC]
+  [LDA #$00]
+  [STA BG12NBA]
+  [LDA #$01]
+  [STA TM]
+  (16-bit-mode)
+
+  (var color int 0)
+  (while 1
+    "Get input from the controller"
+    (s::asm s::lda :absolute #x4218)
+    (if (s::asm s::and :immediate-w #x0100) ;; is right button depressed?
+       (++ color)
+       color)
+    (set_background_color color #x0000)
+    ))
+
+
+(proc (set_background_color void) (color color_address)
+  color_address
+  (8-bit-mode)
+  (s::asm s::sta :absolute #x2121)
+  (16-bit-mode)
+
+  color
+  (8-bit-mode)
+  (s::asm s::sta :absolute #x2122)
+  (s::asm s::xba :implied)
+  (s::asm s::sta :absolute #x2122)
+  (16-bit-mode))
+
+(cl:in-package :s)
+
+(interrupt-handler :reset
+  [SEI]
+  [CLC]
+  [XCE]
+  [REP #$38]
+  [PHK]
+  [LDA #$0000]
+  [TCD]
+  [LDX #$1FFF]
+  [TXS]
+  [LDA #$0000] [TAX] [TAY]
+  [JSR Reset.Registers]
+  [JSR Reset.VRAM]
+  [JSR Reset.OAM]
+  [JSR Reset.CGRAM]
+  (c-funcall c::main))
+
+[#Data l Zero {$0000}]
+[#Data w pong_char {#pongChar.dat}]
+[#Data w pong_frame {#pongFrame.dat}]
+[#Data w pong_pallet {#pongPallet.dat}]
+
+(vector-table)
