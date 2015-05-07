@@ -1,0 +1,122 @@
+#+DRAWERS: SELFNOTE
+
+* CS400 Compiler
+  [[./scratch]]
+
+** Group Organization
+   :SELFNOTE:
+   - Beck asked which features we have make a decision not to
+     implement.
+   - Not really how we're thinking about it.
+   :END:
+*** Goals
+    :SELFNOTE:
+    - Write a *useful* compiler for the SNES.
+    - No fixed set of features.
+    - Ultimate, unachievable Goal: Write a
+      compiler that supports all of C99.
+    - Wont happen so we increment towards it.
+    :END:
+*** Incremental Approach
+    :SELFNOTE:
+    - Working compiler at all times.
+    - Add the next-most-important
+      approachable feature.
+    :END:
+*** Some Features that We Need
+    :SELFNOTE:
+    - Before we have a useful compiler
+    - Function Calls argument passing
+    - Nested Expressions
+    - Pointers and Arrays
+    - Access to all of memory
+    :END:
+*** Some Difficult Features
+    :SELFNOTE:
+    (puts these off because they are
+     more difficult then they seem)
+    - Type System
+    - Optimization
+    - Floating point (No HW support)
+    - Nested Expressions
+      + (+ (f 3 4) (g 4 (f 0 0)))
+    :END:
+*** Meeting Organization
+    :SELFNOTE:
+    - Meet 3 times a week.
+    - Most work is done as a group
+      during this time.
+    - We discuss how to implement a
+      features, then I implement it on
+      the projector.  (Pick a feature;
+      discuss; implement)
+    :END:
+** Compiler Implementation
+*** Approach Summary
+**** Normal Compiler Implementation
+     :SELFNOTE:
+     - Compiler | input file | output file
+     - Compiler parses input file
+     - Compiler performs a series of
+       modifications to the AST.
+     - Code generation and output
+     :END:
+**** Our Implementation
+     :SELFNOTE:
+     - S-expression Syntax
+     - Extend CL with macros.
+     - This makes the inputs a executable
+       Lisp program which outputs asm code.
+     - Compiler is implemented as Common Lisp
+       macros.
+     - This really is a different paradigm.
+     :END:
+     [[/home/ben/repositories/sexp-syntaxes/midimsg.c.lisp][Syntax Example]]
+
+*** A Runnable Input Example
+    [[../../compiler/inputs]]
+    :SELFNOTE:
+    Show compiler running as a Lisp
+    Interpreter.
+
+
+    :END:
+*** An Input Example
+    [[./input1.c.lisp]]
+    [[./input2.c.lisp]]
+
+    :SELFNOTE:
+    - Run C translator as Lisp Interpreter
+
+      (in-package :c)
+      (cl:defmacro sub (name cl:&body code)
+        `(proc (,name void) () ,@code))
+      (sub hi (c::var x int 0))
+
+    - Generate C Code
+    - Generate ASM Code
+    - Partially Expanded Common Lisp Code
+    :END:
+*** Our Implementation Approach
+    :SELFNOTE:
+    - Input file is actually
+      a Common Lisp program
+    - Compiler is a Common Lisp
+      library (macros).
+    - Input file has full access
+      to Common Lisp, and can add
+      anything it likes to the
+      compiler.
+    - The Common-Lisp macro
+      expansion process can be
+      seen as a series of AST
+      transformations, except:
+      + You don't think about it
+        like that.
+      + AST is valid CL at every
+        step.
+    - This is the way Common Lisp
+      implementations work.
+    - This is the way Common Lisp
+      libraries work.
+    :END:

@@ -1,0 +1,92 @@
+# Code Generation Examples
+## (+ 3 4)
+
+    ; LDA #3b
+    ; CLC
+    ; ADC #4b
+
+## (+ x y)
+In the caller:
+
+    ; LDA x                   Push x
+    ; PHA
+    ; LDA y                   Push y
+    ; PHA
+    ; TSC                     Make room for 1 byte of return space
+    ; CLC
+    ; ADC #1b
+    ; TCS
+    ; JSL whatever
+    ; LDA 1,S                 Return value
+    ; TSC                     Clean up the stack
+    ; SEC
+    ; SBC #3
+    ; TCS
+
+
+In the callee:
+
+    ; LDA 5,S                 First argument
+    ; CLC
+    ; ADC 4,S                 Second argument
+    ; STA 3,S                 Return value
+    ; RTS
+
+
+# Simple Code Example
+
+    (var n char 0)
+
+    (defun foo ((char x) (char y) -> char)
+      (var z char 3)
+      (return (+ x y z)))
+
+    (defun main ()
+      (label loop)
+      (if (!= n 10)
+        (block (++ n)
+               (goto loop))
+        (block (-- n)))
+      (= n (foo 3 n)))
+
+Expands into...
+
+    (defvar *type-sizes* '(char 1))
+    (defvar *globals* (make-hash-table))
+
+    (setf (gethash *globals* 'n) '(char))
+
+
+    (setf (gethash *functions* foo)
+      '(progn (asm lda :immediate 3)
+              (asm pha :implied)
+              (asm clc :implied)
+              (asm lda :stack-relative 1)
+              (asm adc :stack-relative 4)
+              (asm adc :stack-relative 5)
+              (asm plx :implied)
+              (asm rts :implied)))
+
+    (setf (gethash *functions* main)
+      '(progn (asm label loop)
+              (asm lda :direct (global n))
+              (asm cmp :immediate 10)
+              (asm beq :label else)
+              (asm inc :direct (global n))
+              (asm bra :label loop)
+              (asm bra :label end)
+              (asm label else)
+              (asm dec :direct (global n))
+              (asm label end)
+              (asm lda :immediate 3)
+              (asm pha :implied)
+              (asm lda :direct (global n))
+              (asm pha :implied)
+              (asm jsr :absolute (function foo))
+              (asm sta :direct (global _temp1))
+              (asm tsc :implied)
+              (asm clc :implied)
+              (asm adc :immediate 2)
+              (asm tcs :implied)
+              (asm lda :direct (global _temp1))
+              (asm sta :direct (global n))))
